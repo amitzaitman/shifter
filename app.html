@@ -139,7 +139,7 @@ label.btn { position: relative; }
 }
 #bar { display: block; width: 100%; height: 100%; overflow: visible; }
 #bar path { fill: none; stroke-width: var(--bar-w); }
-#bar .glow { stroke-width: calc(var(--bar-w) * 2.4); opacity: .55; }
+#bar .glow { stroke-width: calc(var(--bar-w) * 2.4); }
 #bar .track { stroke: var(--raise); }
 #bar .zone { stroke: color-mix(in oklab, var(--fg) 30%, var(--raise)); }
 #bar .mark { stroke: var(--fg); stroke-linecap: round; stroke-width: calc(var(--bar-w) * 1.3); }
@@ -154,6 +154,10 @@ label.btn { position: relative; }
   padding: 0 calc(var(--bar-w) + 16px); text-shadow: 0 2px 18px color-mix(in oklab, var(--bg) 55%, transparent); }
 .gear { flex: none; font-family: var(--font-num); font-weight: 700; font-size: clamp(56px, min(13vh, 24vw), 140px); line-height: .9; color: color-mix(in oklab, var(--fg) 72%, transparent); font-variant-numeric: tabular-nums; }
 .gear:empty { display: none; }
+/* optional rpm readout, for checking against the car's tachometer */
+.rpmcal { flex: none; font-family: var(--font-num); font-weight: 600; font-size: clamp(30px, min(6vh, 11vw), 60px); line-height: 1; color: color-mix(in oklab, var(--fg) 82%, transparent); font-variant-numeric: tabular-nums; }
+.rpmcal span { direction: ltr; unicode-bidi: isolate; }
+.rpmcal small { font-family: var(--font-body); font-weight: 500; font-size: .4em; margin-inline-start: .35em; color: color-mix(in oklab, var(--fg) 55%, transparent); }
 .hide-num .gear { display: none; }
 /* coffee cup: the liquid tilts with acceleration, ripples on a jolt and spills on a harsh one */
 .cupbox { flex: 0 1 auto; display: flex; justify-content: center; width: 100%; height: min(48vh, 92vw); min-height: 90px; pointer-events: none; }
@@ -355,6 +359,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
       <div class="card">
         <div class="switch"><label for="in-sound">צפצוף כשצריך להעביר</label><input type="checkbox" id="in-sound"></div>
         <div class="switch"><label for="in-nums">להציג את מספר ההילוך על המסך</label><input type="checkbox" id="in-nums" checked></div>
+        <div class="switch"><label for="in-rpm">להציג סל"ד (כדי לבדוק מול שעון הסל"ד ברכב)</label><input type="checkbox" id="in-rpm"></div>
         <div class="switch"><label for="in-cup">כוס קפה שמראה את התאוצה בזמן נסיעה</label><input type="checkbox" id="in-cup" checked></div>
         <div class="switch"><label for="in-record">לשמור הקלטה של כל נסיעה (קול, GPS ותאוצה), בשביל כיול</label><input type="checkbox" id="in-record"></div>
         <p class="small muted">ההקלטה כוללת את המיקום שלך. בסוף הנסיעה יופיע במסך הסיכום כפתור לשיתוף הקובץ. הקובץ לא נשמר בטלפון: אם תסגור את הדף לפני שתשתף, הוא יאבד.</p>
@@ -405,6 +410,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
   </div>
   <div class="dash" id="dash">
     <div class="gear" id="d-gear"></div>
+    <div class="rpmcal" id="d-rpmcal" hidden><span id="d-rpm">----</span><small>סל"ד</small></div>
     <div class="cupbox" id="cupbox" aria-hidden="true">
       <svg viewBox="-34 -46 192 176">
         <defs><clipPath id="cup-in"><path d="M8 10 H112 L103 108 Q101 117 92 117 H28 Q19 117 17 108 Z"/></clipPath></defs>
@@ -437,7 +443,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     get(k, d) { try { const v = localStorage.getItem('shiftcoach.' + k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
     set(k, v) { try { localStorage.setItem('shiftcoach.' + k, JSON.stringify(v)); } catch (e) { /* storage blocked */ } }
   };
-  const DEFAULTS = { mode: 'eco', ecoTarget: 2500, redline: 6500, nGears: 5, cylinders: 4, rpmScale: 1, sound: false, numbers: true, record: false, cup: true };
+  const DEFAULTS = { mode: 'eco', ecoTarget: 2500, redline: 6500, nGears: 5, cylinders: 4, rpmScale: 1, sound: false, numbers: true, record: false, cup: true, showRpm: false };
   let settings = Object.assign({}, DEFAULTS, LS.get('settings', {}));
   let gearModel = E.GearModel.fromJSON(LS.get('gears', null), settings.nGears);
   let session = LS.get('session', null);
@@ -550,6 +556,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     $('stage').hidden = false; $('demo-tag').hidden = kind !== 'demo';
     $('stage').classList.toggle('hide-num', !settings.numbers);
     $('stage').classList.toggle('no-cup', settings.cup === false);
+    $('d-rpmcal').hidden = !settings.showRpm;
     resetCup();
     pillsKey = ''; ['s-mic', 's-gps', 's-mot'].forEach(id => { $(id).dataset.st = ''; });
     $('d-mode').textContent = settings.mode === 'sport' ? 'ספורטיבי' : 'חסכוני';
@@ -680,7 +687,9 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     seg('track', 0, 1);
     if (L.top) seg('zone', 0, 0); else seg('zone', barFrac(th.goodLo, th), 1);
     seg('fill', 0, barCol ? Math.max(0.02, barFrac(r, th)) : 0, barCol ? rgb(barCol) : null, flash);
-    seg('glow', 0, barCol ? Math.max(0.02, barFrac(r, th)) : 0, barCol ? rgb(barCol) : null, flash * 0.55);
+    // the glow grows with rpm: barely there at low revs, strong near the shift point
+    const gf = barCol ? Math.max(0, Math.min(1, barFrac(r, th))) : 0;
+    seg('glow', 0, barCol ? Math.max(0.02, gf) : 0, barCol ? rgb(barCol) : null, flash * (0.12 + 0.78 * gf * gf));
 
     // after a shift (up, down or launch): the whole screen = smoothness, like a traffic light;
     // a dot on the bar = timing (upshifts only); a shake if it was harsh
@@ -712,6 +721,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     }
     st.style.transform = tx;
     $('d-gear').textContent = L.gear != null ? L.gear : '';
+    if (settings.showRpm) $('d-rpm').textContent = L.rpm != null ? fmt(Math.round(L.rpm / 10) * 10) : '----';
     const sens = run.sensors();
     const WORD = { ok: 'פעיל', wait: 'ממתין', bad: 'חסום' };
     for (const [id, k, name] of [['s-mic', 'mic', 'מיקרופון'], ['s-gps', 'gps', 'GPS'], ['s-mot', 'mot', 'חיישן תנועה']]) {
@@ -1258,7 +1268,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     const ts = E.thresholds(Object.assign({}, settings, { mode: 'sport' }));
     $('eco-desc').textContent = `בזמן: ${fmt(te.goodLo)}–${fmt(te.goodHi)}. מוקדם: מתחת ל-${fmt(te.goodLo)}, או אם אחרי ההעברה המנוע ירד מתחת ל-${fmt(te.lug)}.`;
     $('red-desc').textContent = `בספורטיבי, בזמן: ${fmt(ts.goodLo)}–${fmt(ts.goodHi)}.`;
-    $('in-sound').checked = !!settings.sound; $('in-nums').checked = !!settings.numbers; $('in-record').checked = !!settings.record; $('in-cup').checked = settings.cup !== false;
+    $('in-sound').checked = !!settings.sound; $('in-nums').checked = !!settings.numbers; $('in-record').checked = !!settings.record; $('in-cup').checked = settings.cup !== false; $('in-rpm').checked = !!settings.showRpm;
     const gs = gearModel.solve();
     $('gear-status').textContent = gs.length
       ? (gearModel.complete ? `כל ${settings.nGears} ההילוכים נלמדו. הצבעים יודעים עכשיו גם באיזה הילוך אתה.` : `נלמדו ${gs.length} מתוך ${settings.nGears}. ממשיך ללמוד בכל נסיעה.`)
@@ -1295,6 +1305,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
   $('in-sound').addEventListener('change', (e) => { settings.sound = e.target.checked; saveSettings(); });
   $('in-record').addEventListener('change', (e) => { settings.record = e.target.checked; saveSettings(); });
   $('in-cup').addEventListener('change', (e) => { settings.cup = e.target.checked; saveSettings(); });
+  $('in-rpm').addEventListener('change', (e) => { settings.showRpm = e.target.checked; saveSettings(); });
   $('in-nums').addEventListener('change', (e) => { settings.numbers = e.target.checked; saveSettings(); });
   window.addEventListener('resize', () => { if (!$('view-summary').hidden && session) drawChart($('chart'), session); });
 
