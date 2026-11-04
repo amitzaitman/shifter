@@ -178,7 +178,7 @@ label.btn { position: relative; }
 .mosaic { display: grid; grid-template-columns: repeat(auto-fill, minmax(46px, 1fr)); gap: 8px; }
 .tile { aspect-ratio: 1; border-radius: 10px; border: 6px solid var(--line); background: var(--raise); padding: 0; position: relative; }
 .tile[aria-pressed="true"] { outline: 2px solid var(--fg); outline-offset: 2px; }
-.tile span { position: absolute; inset: 0; display: grid; place-items: center; font-family: var(--font-num); font-size: 12px; color: var(--fg); text-shadow: 0 1px 2px color-mix(in oklab, var(--bg) 80%, transparent); font-weight: 600; }
+.tile span { direction: ltr; unicode-bidi: isolate; position: absolute; inset: 0; display: grid; place-items: center; font-family: var(--font-num); font-size: 12px; color: var(--fg); text-shadow: 0 1px 2px color-mix(in oklab, var(--bg) 80%, transparent); font-weight: 600; }
 .detail { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px 16px; }
 .detail div { display: flex; flex-direction: column; min-width: 0; }
 .detail .l { font-size: 12px; color: var(--muted); }
@@ -238,7 +238,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
         <div class="hero-tile" aria-hidden="true"><svg viewBox="0 0 112 112"><rect class="t" x="5" y="5" width="102" height="102" rx="17"/><path class="f" pathLength="100" d="M56 107 H90 A17 17 0 0 0 107 90 V22 A17 17 0 0 0 90 5 H56"/><path class="f" pathLength="100" d="M56 107 H22 A17 17 0 0 1 5 90 V22 A17 17 0 0 1 22 5 H56"/></svg></div>
         <div style="display:flex;flex-direction:column;gap:8px;min-width:0">
           <h2>המסך הוא הפידבק</h2>
-          <p>שים את הטלפון במעמד וסע. הפס סביב המסך מתמלא עם הסל"ד, ומהבהב כשצריך להעביר. אחרי ההעברה המסך נדלק ירוק, צהוב או אדום, ורועד אם ההעברה קפצה.</p>
+          <p>שים את הטלפון במעמד וסע. אחרי כל העברה, הורדה או זינוק המסך נדלק לפי החלקות: ירוק חלק, צהוב טלטלה, אדום קפיצה (וגם רועד). הפס סביב המסך מתמלא עם הסל"ד ומהבהב כשנוח להעביר.</p>
         </div>
       </section>
 
@@ -260,17 +260,18 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
 
       <section class="legend" aria-label="מקרא צבעים">
         <div class="card">
-          <h3>הפס: סל"ד</h3>
+          <h3>המסך: חלקות</h3>
+          <div class="key"><span class="sw fill c-good"></span>ירוק: חלקה, הנוסעים לא הרגישו</div>
+          <div class="key"><span class="sw fill c-slight"></span>צהוב: טלטלה קלה</div>
+          <div class="key"><span class="sw fill c-late"></span>אדום ורעידה: קפיצה</div>
+          <div class="key muted">אחרי כל העברה למעלה, הורדת הילוך וזינוק.</div>
+        </div>
+        <div class="card">
+          <h3>הפס: סל"ד ותזמון</h3>
           <div class="key"><span class="sw frame c-good"></span>מתמלא ככל שהמנוע מסתובב מהר יותר</div>
           <div class="key"><span class="sw frame c-accent"></span>מהבהב: להעביר עכשיו</div>
           <div class="key"><span class="sw frame c-late"></span>אדום: עברת את הנקודה, או מנוע חנוק</div>
-        </div>
-        <div class="card">
-          <h3>אחרי העברה</h3>
-          <div class="key"><span class="sw fill c-good"></span>ירוק: בזמן</div>
-          <div class="key"><span class="sw fill c-slight"></span>צהוב: קצת מאוחר</div>
-          <div class="key"><span class="sw fill c-late"></span>אדום: מוקדם או מאוחר מדי</div>
-          <div class="key muted">הנקודה על הפס מראה איפה העברת. המסך רועד אם ההעברה קפצה.</div>
+          <div class="key muted">נקודה על הפס מראה איפה העברת למעלה. הצבע שלה: ירוק בזמן, צהוב קצת מאוחר, אדום מוקדם או מאוחר.</div>
         </div>
       </section>
     </div>
@@ -700,6 +701,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
       this.events = []; this.pending = [];
       this.lowSince = null; this.trace = []; this.lastTraceT = -1e9; this.startT = null;
       this.hasGps = false; this.hasMotion = false;
+      this.rh = []; this.downRefract = 0; this.stopSince = null; this.launch = null;
       this.onEvent = this.onEvent || null; this.onEventUpdate = this.onEventUpdate || null;
     }
 
@@ -714,6 +716,8 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
         this.trace.push({ t: t - this.startT, rpm: r.rpm ? Math.round(r.rpm) : null, kmh: k != null ? Math.round(k) : null, gear: g ? g.n : null });
       }
       this.detect(t);
+      this.detectDown(t);
+      this.detectLaunch(t);
       this.flushPending(t);
     }
     // כל דגימת GPS: מחשבים יחס סל"ד/קמ"ש לכל פריימי הסאונד שבין שתי הדגימות האחרונות.
@@ -857,7 +861,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
       }
       const g = gradeShift(d.peak, after, this.th);
       const ev = {
-        id: this.events.length + 1, t: d.tPeak - (this.startT || 0), from, to,
+        id: this.events.length + 1, kind: 'up', t: d.tPeak - (this.startT || 0), from, to,
         before: Math.round(d.peak), after: Math.round(after), mode: this.th.mode,
         grade: g.grade, note: g.note, score: GRADES[g.grade].score,
         jerk: null, smooth: null, kmh: kmhNow != null ? Math.round(kmhNow) : null,
@@ -865,10 +869,78 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
         revDrop: Math.round(100 * Math.max(0, after - d.min) / after),
         duration: Math.round((d.tRise - d.tPeak) * 100) / 100, smoothSrc: null
       };
-      if (!this.hasMotion) { ev.smooth = audioSmooth(ev.revDrop, ev.duration); ev.smoothSrc = 'sound'; }
+      this.emit(ev, d.tPeak - 0.3, t + 0.9);
+    }
+    // מוסיף אירוע. החלקות נקבעת מיד לפי הסאונד, או אחרי t1 לפי מד התאוצה.
+    emit(ev, t0, t1) {
+      const snd = ev.audioSmooth !== undefined ? ev.audioSmooth : audioSmooth(ev.revDrop, ev.duration);
+      delete ev.audioSmooth;
+      if (!this.hasMotion) { ev.smooth = snd; ev.smoothSrc = snd ? 'sound' : null; }
       this.events.push(ev);
-      if (this.hasMotion) this.pending.push({ ev, t0: d.tPeak - 0.3, t1: t + 0.9 });
+      if (this.hasMotion) this.pending.push({ ev, t0, t1, fallback: snd });
       if (this.onEvent) this.onEvent(ev);
+    }
+
+    // --- זיהוי הורדת הילוך: היחס סל"ד/קמ"ש קופץ למעלה ב-15% ומעלה ומתייצב, והסל"ד עצמו עולה ---
+    // (בעצירה עם קלאץ' לחוץ היחס עולה אבל הסל"ד יורד, וכך זה לא נספר.) צריך GPS.
+    detectDown(t) {
+      const last = this.hist[this.hist.length - 1];
+      const k = this.speedAt(t);
+      if (!last || !last.rpm) return;
+      if (k == null || k < 12) { this.rh = []; return; }
+      this.rh.push({ t, rpm: last.rpm, r: last.rpm / k });
+      while (this.rh.length && this.rh[0].t < t - 4.5) this.rh.shift();
+      if (t < this.downRefract || this.state !== 'track') return;
+      const med = (a) => { const q = a.slice().sort((x, y) => x - y); return q[q.length >> 1]; };
+      const now = this.rh.filter(f => f.t >= t - 0.5), before = this.rh.filter(f => f.t >= t - 4 && f.t <= t - 2);
+      if (now.length < 4 || before.length < 6) return;
+      const rNow = med(now.map(f => f.r)), rB = med(before.map(f => f.r));
+      if (Math.max(...now.map(f => Math.abs(f.r / rNow - 1))) > 0.05) return;
+      const jump = rNow / rB;
+      if (jump < 1.15 || jump > 1.9) return;
+      const rpmNow = med(now.map(f => f.rpm)), rpmB = med(before.map(f => f.rpm));
+      if (rpmNow < rpmB * 1.08) return;
+      const mid = this.rh.filter(f => f.t > t - 2.6 && f.t <= t);
+      for (let i = 1; i < mid.length; i++) if (mid[i].rpm / mid[i - 1].rpm > 1.35) return; // טעות אוקטבה
+      const kB = rpmB / rB, gf = this.gears.classify(rpmB, kB), gt = this.gears.classify(rpmNow, k);
+      const from = gf ? gf.n : null, to = gt ? gt.n : null;
+      if (from && to && to >= from) return;
+      let tLeave = t - 2.6, tEnter = t - 0.5;
+      for (const f of this.rh) if (f.t <= t - 0.5 && Math.abs(f.r / rB - 1) < 0.05) tLeave = f.t;
+      for (let i = this.rh.length - 1; i >= 0; i--) { const f = this.rh[i]; if (f.t < tLeave) break; if (Math.abs(f.r / rNow - 1) < 0.05) tEnter = f.t; else break; }
+      let minR = rpmNow;
+      for (const f of this.hist) if (f.t > tLeave && f.t < tEnter && f.rpm) minR = Math.min(minR, f.rpm);
+      this.downRefract = t + 3;
+      this.emit({
+        id: this.events.length + 1, kind: 'down', t: tLeave - (this.startT || 0), from, to,
+        before: Math.round(rpmB), after: Math.round(rpmNow), mode: this.th.mode,
+        grade: null, note: null, score: null, jerk: null, smooth: null, kmh: Math.round(k),
+        revDrop: Math.round(100 * Math.max(0, rpmNow - minR) / rpmNow),
+        duration: Math.round((tEnter - tLeave) * 100) / 100, smoothSrc: null
+      }, tLeave - 0.3, tEnter + 0.9);
+    }
+
+    // --- זיהוי זינוק: עמידה של שנייה לפחות, ואז יציאה עד 12 קמ"ש ---
+    detectLaunch(t) {
+      const k = this.speedAt(t), last = this.hist[this.hist.length - 1];
+      if (k == null) return;
+      if (k < 1.5) { if (this.stopSince == null) this.stopSince = t; this.launch = null; return; }
+      if (this.stopSince != null) {
+        if (t - this.stopSince >= 1.0) this.launch = { t0: Math.max(this.stopSince, t - 2), minRpm: Infinity, maxRpm: 0 };
+        this.stopSince = null;
+      }
+      const L = this.launch; if (!L) return;
+      if (last && last.rpm) { L.minRpm = Math.min(L.minRpm, last.rpm); L.maxRpm = Math.max(L.maxRpm, last.rpm); }
+      if (k < 12 && t - L.t0 < 7) return;
+      this.launch = null;
+      if (k < 12) return;
+      // בלי מד תאוצה: סל"ד שצנח מתחת ל-750 = כמעט נכבה (קפיצה); סל"ד גבוה מאוד = קלאץ' מחליק
+      const snd = L.minRpm < 750 ? 'harsh' : L.maxRpm > 3200 ? 'ok' : isFinite(L.minRpm) ? 'smooth' : null;
+      this.emit({
+        id: this.events.length + 1, kind: 'launch', t: L.t0 - (this.startT || 0), from: 0, to: 1,
+        before: null, after: null, mode: this.th.mode, grade: null, note: null, score: null,
+        jerk: null, smooth: null, audioSmooth: snd, kmh: Math.round(k), revDrop: null, duration: Math.round((t - L.t0) * 10) / 10, smoothSrc: null
+      }, L.t0, t + 0.5);
     }
     flushPending(t) {
       if (!this.pending.length) return;
@@ -876,8 +948,8 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
         if (t < p.t1) return true;
         const j = this.maxJerk(p.t0, p.t1);
         p.ev.jerk = j != null ? Math.round(j * 10) / 10 : null;
-        p.ev.smooth = j != null ? smoothLabel(j) : audioSmooth(p.ev.revDrop, p.ev.duration);
-        p.ev.smoothSrc = j != null ? 'motion' : 'sound';
+        p.ev.smooth = j != null ? smoothLabel(j) : p.fallback;
+        p.ev.smoothSrc = j != null ? 'motion' : p.fallback ? 'sound' : null;
         if (this.onEventUpdate) this.onEventUpdate(p.ev);
         return false;
       });
@@ -903,14 +975,16 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
       return { rpm, kmh, gear, top, state, th, gearsFound: this.gears.gears.length, gearsComplete: this.gears.complete };
     }
     summary() {
-      const ev = this.events;
+      const ev = this.events.filter(e => e.grade);  // תזמון קיים רק להעברה למעלה
       const counts = { good: 0, slight: 0, late: 0, early: 0 };
       for (const e of ev) counts[e.grade]++;
       const score = ev.length ? Math.round(ev.reduce((a, e) => a + e.score, 0) / ev.length) : null;
-      const sm = ev.filter(e => e.smooth);
+      const sm = this.events.filter(e => e.smooth);  // חלקות: כל האירועים, כולל הורדה וזינוק
       const smooth = sm.length ? Math.round(100 * sm.filter(e => e.smooth === 'smooth').length / sm.length) : null;
       const dur = this.trace.length ? this.trace[this.trace.length - 1].t : 0;
-      return { count: ev.length, counts, score, smooth, duration: dur };
+      const kinds = { up: 0, down: 0, launch: 0 };
+      for (const e of this.events) kinds[e.kind || 'up']++;
+      return { count: this.events.length, kinds, counts, score, smooth, duration: dur };
     }
   }
 
@@ -922,6 +996,18 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     harsh: { liftTau: 0.03, dropBelow: 600, engage: 0.05, kick: 1.1 }
   };
   const STYLE_ORDER = ['smooth', 'harsh', 'ok', 'smooth', 'ok', 'smooth', 'harsh'];
+  // זינוק: כמה מהר הקלאץ' משתחרר (tau), כמה הרכב קופץ, והאם המנוע כמעט נכבה
+  const LAUNCH_STYLES = {
+    smooth: { tau: 0.7, jolt: 0, bog: false },
+    ok: { tau: 0.25, jolt: 0.6, bog: false },
+    harsh: { tau: 0.06, jolt: 1.8, bog: true }
+  };
+  // הורדת הילוך: blip = כמה קרוב לסל"ד היעד הנהג מגיע לפני שהוא משחרר (1 = התאמה מלאה)
+  const DOWN_STYLES = {
+    smooth: { blip: 1, engage: 0.3, kick: 0.1 },
+    ok: { blip: 0.6, engage: 0.15, kick: 0.5 },
+    harsh: { blip: 0, engage: 0.05, kick: 1.2 }
+  };
 
   class DriveSim {
     constructor(th, o) {
@@ -931,7 +1017,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
       this.sport = th.mode === 'sport';
       this.acc = (this.sport ? [3.6, 2.8, 2.1, 1.5, 1.1] : [2.4, 1.9, 1.4, 1.0, 0.75]);
       this.lap = 0; this.t = 0; this.nShift = 0;
-      this.shifts = [];
+      this.shifts = []; this.downs = []; this.launches = [];
       this.accel = 0; this.accTarget = 0; this.tau = 0.15;
       this.jolt = 0; this.joltT = 0;
       this.startLap();
@@ -964,11 +1050,18 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
       this.accel += (this.accTarget - this.accel) * Math.min(1, dt / this.tau);
       if (ph === 'idle') {
         this.kmh = 0; this.rpm = this.idle + 15 * Math.sin(this.t * 3); this.accTarget = 0; this.load = 0.1;
-        if (this.phaseT > 2.5) { this.phase = 'launch'; this.phaseT = 0; this.gear = 1; this.tau = 0.3; }
+        if (this.phaseT > 2.5) {
+          this.lstyle = STYLE_ORDER[(this.lap * 2 + 1) % STYLE_ORDER.length];
+          const ls = LAUNCH_STYLES[this.lstyle];
+          this.phase = 'launch'; this.phaseT = 0; this.gear = 1; this.tau = ls.tau;
+          this.jolt = ls.jolt; this.joltT = this.t + 0.2;
+          this.launches.push({ t: this.t, style: this.lstyle });
+        }
       } else if (ph === 'launch') {
+        const ls = LAUNCH_STYLES[this.lstyle];
         this.accTarget = 1.6; this.load = 0.6;
         this.kmh += this.accel * 3.6 * dt;
-        const slip = 1600 + 200 * this.phaseT;
+        const slip = ls.bog ? (this.phaseT < 0.6 ? 700 : 1400 + 200 * this.phaseT) : 1600 + 200 * this.phaseT;
         this.rpm = Math.max(slip, this.kmh * R[0]);
         if (this.kmh * R[0] >= slip) { this.phase = 'accel'; this.phaseT = 0; }
       } else if (ph === 'accel') {
@@ -1005,7 +1098,37 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
         }
       } else if (ph === 'cruise') {
         this.accTarget = 0; this.load = 0.35; this.rpm = this.kmh * R[this.gear - 1];
-        if (this.phaseT > 4) { this.phase = 'brake'; this.phaseT = 0; this.tau = 0.4; }
+        if (this.phaseT > 3) {
+          this.phaseT = 0;
+          if (!this.downDone && this.gear > 2 && this.kmh > 30) { this.phase = 'coast'; this.tau = 0.4; }
+          else { this.phase = 'brake'; this.tau = 0.4; this.downDone = false; }
+        }
+      } else if (ph === 'coast') {
+        this.accTarget = -0.8; this.load = 0.05;
+        this.kmh += this.accel * 3.6 * dt; this.rpm = this.kmh * R[this.gear - 1];
+        if (this.phaseT > 2) {
+          this.dstyle = STYLE_ORDER[(this.lap * 3 + 2) % STYLE_ORDER.length];
+          this.phase = 'dclutch'; this.phaseT = 0; this.downFrom = { gear: this.gear, rpm: this.rpm, t: this.t };
+        }
+      } else if (ph === 'dclutch') {
+        const ds = DOWN_STYLES[this.dstyle];
+        this.accTarget = -0.5; this.load = 0.05;
+        this.kmh += this.accel * 3.6 * dt;
+        const target = this.kmh * R[this.gear - 2], aim = this.idle + (target - this.idle) * ds.blip;
+        this.rpm += (aim - this.rpm) * Math.min(1, dt / 0.2);
+        if (this.phaseT >= 0.6) { this.phase = 'dengage'; this.phaseT = 0; this.engageFrom = this.rpm; this.gear--; this.tau = ds.engage; }
+      } else if (ph === 'dengage') {
+        const ds = DOWN_STYLES[this.dstyle];
+        const target = this.kmh * R[this.gear - 1], f = Math.min(1, this.phaseT / ds.engage);
+        this.rpm = this.engageFrom + (target - this.engageFrom) * f;
+        this.accTarget = 0; this.load = 0.3;
+        this.kmh += this.accel * 3.6 * dt;
+        if (f >= 1) {
+          const mismatch = Math.abs(target - this.engageFrom) / target;
+          this.jolt = -(ds.kick + 3 * mismatch); this.joltT = this.t;
+          this.downs.push({ t: this.downFrom.t, from: this.downFrom.gear, to: this.gear, style: this.dstyle });
+          this.phase = 'cruise'; this.phaseT = 0; this.tau = 0.3; this.downDone = true;
+        }
       } else if (ph === 'brake') {
         this.accTarget = -3.0; this.load = 0.05;
         this.kmh = Math.max(0, this.kmh + this.accel * 3.6 * dt);
@@ -1090,6 +1213,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
   const GRADE_COLOR = { good: 'var(--good)', slight: 'var(--slight)', late: 'var(--late)', early: 'var(--early)' };
   const SMOOTH_KEY = { smooth: 'good', ok: 'slight', harsh: 'late' };
   const GRADE_WORD = { good: 'בזמן', slight: 'קצת מאוחר', late: 'מאוחר מדי', early: 'מוקדם מדי' };
+  const KIND_WORD = { up: 'העברה', down: 'הורדת הילוך', launch: 'זינוק' };
   const SMOOTH_WORD = { smooth: 'חלקה', ok: 'טלטלה קלה', harsh: 'קפיצה' };
   const fillOf = (smooth) => smooth ? `color-mix(in oklab, var(--${SMOOTH_KEY[smooth]}) 72%, var(--bg))` : 'var(--surface)';
   const fmt = (n) => n == null ? '–' : Math.round(n).toLocaleString('en-US');
@@ -1190,8 +1314,9 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
 
   // ---------- continuous colour ----------
   // The bar's length and colour follow a smoothed rpm (green → yellow → blue → red); it flashes at the shift point,
-  // with hysteresis so noisy rpm doesn't flicker it. After a shift the whole screen lights up like a traffic light
-  // (snaps in, fades out), a dot stays on the bar where you shifted, and the screen shakes if the shift was harsh.
+  // with hysteresis so noisy rpm doesn't flicker it. Smoothness is the point of the app, so after every gear change
+  // (up, down, launch) the whole screen lights up by smoothness like a traffic light (snaps in, fades out) and shakes
+  // if it was harsh. Timing is secondary: a dot on the bar where you shifted up, coloured by the timing grade.
   const cssv = getComputedStyle(document.documentElement);
   const C = {};
   for (const n of ['bg', 'surface', 'line', 'good', 'slight', 'accent', 'late', 'early']) {
@@ -1213,7 +1338,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     return C.late;
   }
   let col = null;
-  function resetColour() { col = { fi: null, rpm: null, t: null, pulse: false, shake: null, shakeEv: null }; }
+  function resetColour() { col = { fi: null, rpm: null, t: null, pulse: false, shake: null, shakeEv: null, smoothT: 0 }; }
   const LIGHT = { good: 'good', slight: 'slight', late: 'late', early: 'late' };
   const reduceMotion = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
   // shake amplitude in px from the jerk (m/s³) when we have it, else from the smoothness class
@@ -1247,15 +1372,21 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     if (L.top) seg('zone', 0, 0); else seg('zone', barFrac(th.goodLo, th), 1);
     seg('fill', 0, barCol ? Math.max(0.02, barFrac(r, th)) : 0, barCol ? rgb(barCol) : null, flash);
 
-    // after a shift: traffic-light screen, a dot where you shifted, a shake if it was harsh
-    let fi, tau;
+    // after a shift (up, down or launch): the whole screen = smoothness, like a traffic light;
+    // a dot on the bar = timing (upshifts only); a shake if it was harsh
+    let fi = C.bg, tau = LIVE_TAU;
     if (feedback && t < feedback.until) {
-      const ev = feedback.ev, age = t - feedback.t0;
-      fi = dim(C[LIGHT[ev.grade]], 0.62 * Math.max(0.35, 1 - Math.max(0, age - 0.6) / 2.4));
-      tau = age < 0.5 ? SNAP_TAU : LIVE_TAU;
-      const f = barFrac(ev.before, th);
-      seg('mark', f - 0.004, f + 0.004, rgb(mixc(C[LIGHT[ev.grade]], [255, 255, 255], 0.35)), 1);
-      if (ev.smooth && col.shakeEv !== ev) { col.shakeEv = ev; col.shake = { t0: t, amp: reduceMotion ? 0 : shakeAmp(ev) }; }
+      const ev = feedback.ev;
+      if (ev.smooth) {
+        if (col.shakeEv !== ev) { col.shakeEv = ev; col.smoothT = t; col.shake = { t0: t, amp: reduceMotion ? 0 : shakeAmp(ev) }; }
+        const age = t - col.smoothT;
+        fi = dim(C[SMOOTH_KEY[ev.smooth]], 0.62 * Math.max(0.35, 1 - Math.max(0, age - 0.6) / 2.4));
+        tau = age < 0.5 ? SNAP_TAU : LIVE_TAU;
+      }
+      if (ev.kind === 'up' && ev.grade) {
+        const f = barFrac(ev.before, th);
+        seg('mark', f - 0.004, f + 0.004, rgb(mixc(C[LIGHT[ev.grade]], [255, 255, 255], 0.25)), 1);
+      } else seg('mark', 0, 0);
     } else {
       feedback = null; fi = C.bg; tau = FADE_TAU;
       seg('mark', 0, 0);
@@ -1303,7 +1434,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     const step = Math.max(1, Math.ceil(tr.length / 2400));
     return {
       source, date: new Date().toISOString(), th: coach.th, nGears: settings.nGears,
-      events: coach.events.map(e => ({ t: e.t, from: e.from, to: e.to, before: e.before, after: e.after, grade: e.grade, smooth: e.smooth, jerk: e.jerk, revDrop: e.revDrop, duration: e.duration, smoothSrc: e.smoothSrc })),
+      events: coach.events.map(e => ({ kind: e.kind || 'up', t: e.t, from: e.from, to: e.to, before: e.before, after: e.after, grade: e.grade, smooth: e.smooth, jerk: e.jerk, revDrop: e.revDrop, duration: e.duration, smoothSrc: e.smoothSrc })),
       trace: tr.filter((_, i) => i % step === 0).map(p => [Math.round(p.t * 10) / 10, p.rpm]),
       summary: coach.summary()
     };
@@ -1524,13 +1655,13 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     const smoothKnown = ev.filter(e => e.smooth);
     const stats = document.createElement('div'); stats.className = 'score-row';
     stats.innerHTML = `
+      <div class="stat"><div class="v num">${smoothKnown.length ? Math.round(100 * smoothKnown.filter(e => e.smooth === 'smooth').length / smoothKnown.length) + '%' : '–'}</div><div class="l">חלקות</div></div>
       <div class="stat"><div class="v num">${sum.score != null ? sum.score : '–'}</div><div class="l">ציון תזמון</div></div>
-      <div class="stat"><div class="v num">${smoothKnown.length ? Math.round(100 * smoothKnown.filter(e => e.smooth === 'smooth').length / smoothKnown.length) + '%' : '–'}</div><div class="l">העברות חלקות</div></div>
       <div class="stat"><div class="v num">${ev.length}</div><div class="l">העברות</div></div>`;
     w.appendChild(stats);
 
     const mcard = document.createElement('section'); mcard.className = 'card';
-    mcard.innerHTML = `<h3>כל העברה: מסגרת = תזמון, מילוי = חלקות</h3>`;
+    mcard.innerHTML = `<h3>כל העברה: מילוי = חלקות, מסגרת = תזמון</h3>`;
     if (!ev.length) {
       const p = document.createElement('p'); p.className = 'muted small';
       p.textContent = 'לא זוהו העברות הילוך בנסיעה הזו.'; mcard.appendChild(p);
@@ -1538,10 +1669,10 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
       const mos = document.createElement('div'); mos.className = 'mosaic';
       ev.forEach((e, i) => {
         const b = document.createElement('button'); b.className = 'tile';
-        b.style.borderColor = GRADE_COLOR[e.grade]; b.style.background = fillOf(e.smooth);
+        b.style.borderColor = e.grade ? GRADE_COLOR[e.grade] : 'var(--line)'; b.style.background = fillOf(e.smooth);
         b.setAttribute('aria-pressed', String(selected === i));
-        b.setAttribute('aria-label', `העברה ${i + 1}: ${GRADE_WORD[e.grade]}, ${e.smooth ? SMOOTH_WORD[e.smooth] : 'חלקות לא ידועה'}`);
-        const sp = document.createElement('span'); sp.textContent = e.from && e.to ? `${e.from}›${e.to}` : ''; b.appendChild(sp);
+        b.setAttribute('aria-label', `${KIND_WORD[e.kind || 'up']} ${i + 1}: ${e.smooth ? SMOOTH_WORD[e.smooth] : 'חלקות לא ידועה'}${e.grade ? ', ' + GRADE_WORD[e.grade] : ''}`);
+        const sp = document.createElement('span'); sp.textContent = e.kind === 'launch' ? '0›1' : e.from && e.to ? `${e.from}›${e.to}` : e.kind === 'down' ? '↓' : ''; b.appendChild(sp);
         b.addEventListener('click', () => { selected = selected === i ? null : i; renderSummary(); });
         mos.appendChild(b);
       });
@@ -1551,12 +1682,12 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
         const det = document.createElement('div'); det.className = 'detail';
         const mm = Math.floor(e.t / 60), ss = String(Math.floor(e.t % 60)).padStart(2, '0');
         det.innerHTML = `
-          <div><span class="l">הילוך</span><span class="v num">${e.from && e.to ? e.from + ' → ' + e.to : 'לא ידוע'}</span></div>
-          <div><span class="l">תזמון</span><span class="v" style="color:${GRADE_COLOR[e.grade]}">${GRADE_WORD[e.grade]}</span></div>
-          <div><span class="l">סל"ד לפני ← אחרי</span><span class="v num">${fmt(e.before)} → ${fmt(e.after)}</span></div>
+          <div><span class="l">${KIND_WORD[e.kind || 'up']}</span><span class="v num">${e.kind === 'launch' ? '0 → 1' : e.from && e.to ? e.from + ' → ' + e.to : 'לא ידוע'}</span></div>
+          <div><span class="l">תזמון</span><span class="v" style="color:${e.grade ? GRADE_COLOR[e.grade] : 'var(--muted)'}">${e.grade ? GRADE_WORD[e.grade] : '–'}</span></div>
+          <div><span class="l">סל"ד לפני ← אחרי</span><span class="v num">${e.before != null ? fmt(e.before) + ' → ' + fmt(e.after) : '–'}</span></div>
           <div><span class="l">חלקות</span><span class="v" style="color:${e.smooth ? `var(--${SMOOTH_KEY[e.smooth]})` : 'var(--muted)'}">${e.smooth ? SMOOTH_WORD[e.smooth] : 'לא ידוע'}</span></div>
           <div><span class="l">משך ההעברה</span><span class="v num">${e.duration != null ? e.duration.toFixed(1) + ' s' : '–'}</span></div>
-          <div><span class="l">${e.smoothSrc === 'motion' ? 'טלטלה (m/s³)' : 'צניחת סל"ד מתחת ליעד'}</span><span class="v num">${e.smoothSrc === 'motion' ? (e.jerk != null ? e.jerk : '–') : (e.revDrop != null ? e.revDrop + '%' : '–')}</span></div>
+          <div><span class="l">${e.smoothSrc === 'motion' ? 'טלטלה (m/s³)' : 'פער סל"ד מהיעד'}</span><span class="v num">${e.smoothSrc === 'motion' ? (e.jerk != null ? e.jerk : '–') : (e.revDrop != null ? e.revDrop + '%' : '–')}</span></div>
           <div><span class="l">זמן בנסיעה</span><span class="v num">${mm}:${ss}</span></div>`;
         mcard.appendChild(det);
       }
@@ -1571,8 +1702,8 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
       };
       const sc = { smooth: 0, ok: 0, harsh: 0 }; ev.forEach(e => { if (e.smooth) sc[e.smooth]++; });
       bars.innerHTML = `<h3>התפלגות</h3><div class="bars">
-        <div class="bar-line"><span>תזמון</span><div class="stack">${seg(sum.counts, ['good', 'slight', 'late', 'early'], k => GRADE_COLOR[k])}</div></div>
         <div class="bar-line"><span>חלקות</span><div class="stack">${seg(sc, ['smooth', 'ok', 'harsh'], k => `var(--${SMOOTH_KEY[k]})`)}</div></div>
+        <div class="bar-line"><span>תזמון</span><div class="stack">${seg(sum.counts, ['good', 'slight', 'late', 'early'], k => GRADE_COLOR[k])}</div></div>
       </div>
       <p class="small muted">תזמון: <span class="num">${sum.counts.good}</span> בזמן · <span class="num">${sum.counts.slight}</span> קצת מאוחר · <span class="num">${sum.counts.late}</span> מאוחר · <span class="num">${sum.counts.early}</span> מוקדם</p>`;
       w.appendChild(bars);
@@ -1620,11 +1751,12 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     for (const [t, r] of tr) { if (r == null) { pen = false; continue; } if (!pen) { g.moveTo(x(t), y(r)); pen = true; } else g.lineTo(x(t), y(r)); }
     g.stroke(); g.globalAlpha = 1;
     for (const e of s.events) {
+      if (e.before == null) continue;  // a launch has no rpm point
       const px = x(e.t), py = y(e.before), sz = 12;
       const fillKey = e.smooth ? SMOOTH_KEY[e.smooth] : null;
       g.fillStyle = fillKey ? col('--' + fillKey) : col('--surface');
       g.fillRect(px - sz / 2, py - sz / 2, sz, sz);
-      g.strokeStyle = col('--' + e.grade); g.lineWidth = 3;
+      g.strokeStyle = e.grade ? col('--' + e.grade) : col('--line'); g.lineWidth = 3;
       g.strokeRect(px - sz / 2, py - sz / 2, sz, sz);
     }
   }

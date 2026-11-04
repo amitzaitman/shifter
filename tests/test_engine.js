@@ -14,7 +14,8 @@ function run({ noise = 1, mode = 'eco', seconds = 130, useGps = true, useMotion 
   let t = 0, nextGps = 1.0, nextMot = 0;
   const err = []; let nulls = 0, frames = 0;
   const events = [];
-  coach.onEvent = (e) => events.push(e);
+  const allEvents = [];
+  coach.onEvent = (e) => { allEvents.push(e); if ((e.kind || 'up') === 'up') events.push(e); };
   while (t < seconds) {
     for (let k = 0; k < hop / sub; k++) {
       const dt = sub / sr;
@@ -72,6 +73,21 @@ function run({ noise = 1, mode = 'eco', seconds = 130, useGps = true, useMotion 
   }
   if (verbose) truthGrades.forEach((s, i) => { if (!used.has(i)) console.log(`  MISSED ${s.from}->${s.to} ${Math.round(s.before)}/${Math.round(s.after)} at ${s.t.toFixed(1)}`); });
   Object.assign(res, { matched, gradeOk, smoothOk, falsePos: fp });
+  // הורדות הילוך וזינוקים: התאמה לפי זמן, ובדיקת ציון החלקות
+  const other = (kind, truthList, tol) => {
+    const evs = allEvents.filter(e => e.kind === kind), used = new Set(); let m = 0, ok = 0, fpo = 0;
+    for (const e of evs) {
+      const et = e.t + coach.startT; let bi = -1, bd = tol;
+      truthList.forEach((s, i) => { const d = Math.abs(s.t - et); if (d < bd && !used.has(i)) { bd = d; bi = i; } });
+      if (bi < 0) { fpo++; if (verbose) console.log('  FP ' + kind, e); continue; }
+      used.add(bi); m++; if (truthList[bi].style === e.smooth) ok++;
+      if (verbose) console.log(`  ${kind} true ${truthList[bi].style} | det smooth=${e.smooth} j=${e.jerk} revDrop=${e.revDrop} dur=${e.duration} ${e.from}->${e.to}`);
+    }
+    if (verbose) truthList.forEach((s, i) => { if (!used.has(i)) console.log(`  MISSED ${kind} ${s.style} at ${s.t.toFixed(1)}`); });
+    return `${m}/${truthList.length} ok${ok} fp${fpo}`;
+  };
+  res.down = other('down', sim.downs, 2.0);
+  res.launch = other('launch', sim.launches, 2.5);
   return res;
 }
 

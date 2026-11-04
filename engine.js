@@ -319,6 +319,7 @@
       this.events = []; this.pending = [];
       this.lowSince = null; this.trace = []; this.lastTraceT = -1e9; this.startT = null;
       this.hasGps = false; this.hasMotion = false;
+      this.rh = []; this.downRefract = 0; this.stopSince = null; this.launch = null;
       this.onEvent = this.onEvent || null; this.onEventUpdate = this.onEventUpdate || null;
     }
 
@@ -333,6 +334,8 @@
         this.trace.push({ t: t - this.startT, rpm: r.rpm ? Math.round(r.rpm) : null, kmh: k != null ? Math.round(k) : null, gear: g ? g.n : null });
       }
       this.detect(t);
+      this.detectDown(t);
+      this.detectLaunch(t);
       this.flushPending(t);
     }
     // כל דגימת GPS: מחשבים יחס סל"ד/קמ"ש לכל פריימי הסאונד שבין שתי הדגימות האחרונות.
@@ -476,7 +479,7 @@
       }
       const g = gradeShift(d.peak, after, this.th);
       const ev = {
-        id: this.events.length + 1, t: d.tPeak - (this.startT || 0), from, to,
+        id: this.events.length + 1, kind: 'up', t: d.tPeak - (this.startT || 0), from, to,
         before: Math.round(d.peak), after: Math.round(after), mode: this.th.mode,
         grade: g.grade, note: g.note, score: GRADES[g.grade].score,
         jerk: null, smooth: null, kmh: kmhNow != null ? Math.round(kmhNow) : null,
@@ -484,10 +487,78 @@
         revDrop: Math.round(100 * Math.max(0, after - d.min) / after),
         duration: Math.round((d.tRise - d.tPeak) * 100) / 100, smoothSrc: null
       };
-      if (!this.hasMotion) { ev.smooth = audioSmooth(ev.revDrop, ev.duration); ev.smoothSrc = 'sound'; }
+      this.emit(ev, d.tPeak - 0.3, t + 0.9);
+    }
+    // מוסיף אירוע. החלקות נקבעת מיד לפי הסאונד, או אחרי t1 לפי מד התאוצה.
+    emit(ev, t0, t1) {
+      const snd = ev.audioSmooth !== undefined ? ev.audioSmooth : audioSmooth(ev.revDrop, ev.duration);
+      delete ev.audioSmooth;
+      if (!this.hasMotion) { ev.smooth = snd; ev.smoothSrc = snd ? 'sound' : null; }
       this.events.push(ev);
-      if (this.hasMotion) this.pending.push({ ev, t0: d.tPeak - 0.3, t1: t + 0.9 });
+      if (this.hasMotion) this.pending.push({ ev, t0, t1, fallback: snd });
       if (this.onEvent) this.onEvent(ev);
+    }
+
+    // --- זיהוי הורדת הילוך: היחס סל"ד/קמ"ש קופץ למעלה ב-15% ומעלה ומתייצב, והסל"ד עצמו עולה ---
+    // (בעצירה עם קלאץ' לחוץ היחס עולה אבל הסל"ד יורד, וכך זה לא נספר.) צריך GPS.
+    detectDown(t) {
+      const last = this.hist[this.hist.length - 1];
+      const k = this.speedAt(t);
+      if (!last || !last.rpm) return;
+      if (k == null || k < 12) { this.rh = []; return; }
+      this.rh.push({ t, rpm: last.rpm, r: last.rpm / k });
+      while (this.rh.length && this.rh[0].t < t - 4.5) this.rh.shift();
+      if (t < this.downRefract || this.state !== 'track') return;
+      const med = (a) => { const q = a.slice().sort((x, y) => x - y); return q[q.length >> 1]; };
+      const now = this.rh.filter(f => f.t >= t - 0.5), before = this.rh.filter(f => f.t >= t - 4 && f.t <= t - 2);
+      if (now.length < 4 || before.length < 6) return;
+      const rNow = med(now.map(f => f.r)), rB = med(before.map(f => f.r));
+      if (Math.max(...now.map(f => Math.abs(f.r / rNow - 1))) > 0.05) return;
+      const jump = rNow / rB;
+      if (jump < 1.15 || jump > 1.9) return;
+      const rpmNow = med(now.map(f => f.rpm)), rpmB = med(before.map(f => f.rpm));
+      if (rpmNow < rpmB * 1.08) return;
+      const mid = this.rh.filter(f => f.t > t - 2.6 && f.t <= t);
+      for (let i = 1; i < mid.length; i++) if (mid[i].rpm / mid[i - 1].rpm > 1.35) return; // טעות אוקטבה
+      const kB = rpmB / rB, gf = this.gears.classify(rpmB, kB), gt = this.gears.classify(rpmNow, k);
+      const from = gf ? gf.n : null, to = gt ? gt.n : null;
+      if (from && to && to >= from) return;
+      let tLeave = t - 2.6, tEnter = t - 0.5;
+      for (const f of this.rh) if (f.t <= t - 0.5 && Math.abs(f.r / rB - 1) < 0.05) tLeave = f.t;
+      for (let i = this.rh.length - 1; i >= 0; i--) { const f = this.rh[i]; if (f.t < tLeave) break; if (Math.abs(f.r / rNow - 1) < 0.05) tEnter = f.t; else break; }
+      let minR = rpmNow;
+      for (const f of this.hist) if (f.t > tLeave && f.t < tEnter && f.rpm) minR = Math.min(minR, f.rpm);
+      this.downRefract = t + 3;
+      this.emit({
+        id: this.events.length + 1, kind: 'down', t: tLeave - (this.startT || 0), from, to,
+        before: Math.round(rpmB), after: Math.round(rpmNow), mode: this.th.mode,
+        grade: null, note: null, score: null, jerk: null, smooth: null, kmh: Math.round(k),
+        revDrop: Math.round(100 * Math.max(0, rpmNow - minR) / rpmNow),
+        duration: Math.round((tEnter - tLeave) * 100) / 100, smoothSrc: null
+      }, tLeave - 0.3, tEnter + 0.9);
+    }
+
+    // --- זיהוי זינוק: עמידה של שנייה לפחות, ואז יציאה עד 12 קמ"ש ---
+    detectLaunch(t) {
+      const k = this.speedAt(t), last = this.hist[this.hist.length - 1];
+      if (k == null) return;
+      if (k < 1.5) { if (this.stopSince == null) this.stopSince = t; this.launch = null; return; }
+      if (this.stopSince != null) {
+        if (t - this.stopSince >= 1.0) this.launch = { t0: Math.max(this.stopSince, t - 2), minRpm: Infinity, maxRpm: 0 };
+        this.stopSince = null;
+      }
+      const L = this.launch; if (!L) return;
+      if (last && last.rpm) { L.minRpm = Math.min(L.minRpm, last.rpm); L.maxRpm = Math.max(L.maxRpm, last.rpm); }
+      if (k < 12 && t - L.t0 < 7) return;
+      this.launch = null;
+      if (k < 12) return;
+      // בלי מד תאוצה: סל"ד שצנח מתחת ל-750 = כמעט נכבה (קפיצה); סל"ד גבוה מאוד = קלאץ' מחליק
+      const snd = L.minRpm < 750 ? 'harsh' : L.maxRpm > 3200 ? 'ok' : isFinite(L.minRpm) ? 'smooth' : null;
+      this.emit({
+        id: this.events.length + 1, kind: 'launch', t: L.t0 - (this.startT || 0), from: 0, to: 1,
+        before: null, after: null, mode: this.th.mode, grade: null, note: null, score: null,
+        jerk: null, smooth: null, audioSmooth: snd, kmh: Math.round(k), revDrop: null, duration: Math.round((t - L.t0) * 10) / 10, smoothSrc: null
+      }, L.t0, t + 0.5);
     }
     flushPending(t) {
       if (!this.pending.length) return;
@@ -495,8 +566,8 @@
         if (t < p.t1) return true;
         const j = this.maxJerk(p.t0, p.t1);
         p.ev.jerk = j != null ? Math.round(j * 10) / 10 : null;
-        p.ev.smooth = j != null ? smoothLabel(j) : audioSmooth(p.ev.revDrop, p.ev.duration);
-        p.ev.smoothSrc = j != null ? 'motion' : 'sound';
+        p.ev.smooth = j != null ? smoothLabel(j) : p.fallback;
+        p.ev.smoothSrc = j != null ? 'motion' : p.fallback ? 'sound' : null;
         if (this.onEventUpdate) this.onEventUpdate(p.ev);
         return false;
       });
@@ -522,14 +593,16 @@
       return { rpm, kmh, gear, top, state, th, gearsFound: this.gears.gears.length, gearsComplete: this.gears.complete };
     }
     summary() {
-      const ev = this.events;
+      const ev = this.events.filter(e => e.grade);  // תזמון קיים רק להעברה למעלה
       const counts = { good: 0, slight: 0, late: 0, early: 0 };
       for (const e of ev) counts[e.grade]++;
       const score = ev.length ? Math.round(ev.reduce((a, e) => a + e.score, 0) / ev.length) : null;
-      const sm = ev.filter(e => e.smooth);
+      const sm = this.events.filter(e => e.smooth);  // חלקות: כל האירועים, כולל הורדה וזינוק
       const smooth = sm.length ? Math.round(100 * sm.filter(e => e.smooth === 'smooth').length / sm.length) : null;
       const dur = this.trace.length ? this.trace[this.trace.length - 1].t : 0;
-      return { count: ev.length, counts, score, smooth, duration: dur };
+      const kinds = { up: 0, down: 0, launch: 0 };
+      for (const e of this.events) kinds[e.kind || 'up']++;
+      return { count: this.events.length, kinds, counts, score, smooth, duration: dur };
     }
   }
 
@@ -541,6 +614,18 @@
     harsh: { liftTau: 0.03, dropBelow: 600, engage: 0.05, kick: 1.1 }
   };
   const STYLE_ORDER = ['smooth', 'harsh', 'ok', 'smooth', 'ok', 'smooth', 'harsh'];
+  // זינוק: כמה מהר הקלאץ' משתחרר (tau), כמה הרכב קופץ, והאם המנוע כמעט נכבה
+  const LAUNCH_STYLES = {
+    smooth: { tau: 0.7, jolt: 0, bog: false },
+    ok: { tau: 0.25, jolt: 0.6, bog: false },
+    harsh: { tau: 0.06, jolt: 1.8, bog: true }
+  };
+  // הורדת הילוך: blip = כמה קרוב לסל"ד היעד הנהג מגיע לפני שהוא משחרר (1 = התאמה מלאה)
+  const DOWN_STYLES = {
+    smooth: { blip: 1, engage: 0.3, kick: 0.1 },
+    ok: { blip: 0.6, engage: 0.15, kick: 0.5 },
+    harsh: { blip: 0, engage: 0.05, kick: 1.2 }
+  };
 
   class DriveSim {
     constructor(th, o) {
@@ -550,7 +635,7 @@
       this.sport = th.mode === 'sport';
       this.acc = (this.sport ? [3.6, 2.8, 2.1, 1.5, 1.1] : [2.4, 1.9, 1.4, 1.0, 0.75]);
       this.lap = 0; this.t = 0; this.nShift = 0;
-      this.shifts = [];
+      this.shifts = []; this.downs = []; this.launches = [];
       this.accel = 0; this.accTarget = 0; this.tau = 0.15;
       this.jolt = 0; this.joltT = 0;
       this.startLap();
@@ -583,11 +668,18 @@
       this.accel += (this.accTarget - this.accel) * Math.min(1, dt / this.tau);
       if (ph === 'idle') {
         this.kmh = 0; this.rpm = this.idle + 15 * Math.sin(this.t * 3); this.accTarget = 0; this.load = 0.1;
-        if (this.phaseT > 2.5) { this.phase = 'launch'; this.phaseT = 0; this.gear = 1; this.tau = 0.3; }
+        if (this.phaseT > 2.5) {
+          this.lstyle = STYLE_ORDER[(this.lap * 2 + 1) % STYLE_ORDER.length];
+          const ls = LAUNCH_STYLES[this.lstyle];
+          this.phase = 'launch'; this.phaseT = 0; this.gear = 1; this.tau = ls.tau;
+          this.jolt = ls.jolt; this.joltT = this.t + 0.2;
+          this.launches.push({ t: this.t, style: this.lstyle });
+        }
       } else if (ph === 'launch') {
+        const ls = LAUNCH_STYLES[this.lstyle];
         this.accTarget = 1.6; this.load = 0.6;
         this.kmh += this.accel * 3.6 * dt;
-        const slip = 1600 + 200 * this.phaseT;
+        const slip = ls.bog ? (this.phaseT < 0.6 ? 700 : 1400 + 200 * this.phaseT) : 1600 + 200 * this.phaseT;
         this.rpm = Math.max(slip, this.kmh * R[0]);
         if (this.kmh * R[0] >= slip) { this.phase = 'accel'; this.phaseT = 0; }
       } else if (ph === 'accel') {
@@ -624,7 +716,37 @@
         }
       } else if (ph === 'cruise') {
         this.accTarget = 0; this.load = 0.35; this.rpm = this.kmh * R[this.gear - 1];
-        if (this.phaseT > 4) { this.phase = 'brake'; this.phaseT = 0; this.tau = 0.4; }
+        if (this.phaseT > 3) {
+          this.phaseT = 0;
+          if (!this.downDone && this.gear > 2 && this.kmh > 30) { this.phase = 'coast'; this.tau = 0.4; }
+          else { this.phase = 'brake'; this.tau = 0.4; this.downDone = false; }
+        }
+      } else if (ph === 'coast') {
+        this.accTarget = -0.8; this.load = 0.05;
+        this.kmh += this.accel * 3.6 * dt; this.rpm = this.kmh * R[this.gear - 1];
+        if (this.phaseT > 2) {
+          this.dstyle = STYLE_ORDER[(this.lap * 3 + 2) % STYLE_ORDER.length];
+          this.phase = 'dclutch'; this.phaseT = 0; this.downFrom = { gear: this.gear, rpm: this.rpm, t: this.t };
+        }
+      } else if (ph === 'dclutch') {
+        const ds = DOWN_STYLES[this.dstyle];
+        this.accTarget = -0.5; this.load = 0.05;
+        this.kmh += this.accel * 3.6 * dt;
+        const target = this.kmh * R[this.gear - 2], aim = this.idle + (target - this.idle) * ds.blip;
+        this.rpm += (aim - this.rpm) * Math.min(1, dt / 0.2);
+        if (this.phaseT >= 0.6) { this.phase = 'dengage'; this.phaseT = 0; this.engageFrom = this.rpm; this.gear--; this.tau = ds.engage; }
+      } else if (ph === 'dengage') {
+        const ds = DOWN_STYLES[this.dstyle];
+        const target = this.kmh * R[this.gear - 1], f = Math.min(1, this.phaseT / ds.engage);
+        this.rpm = this.engageFrom + (target - this.engageFrom) * f;
+        this.accTarget = 0; this.load = 0.3;
+        this.kmh += this.accel * 3.6 * dt;
+        if (f >= 1) {
+          const mismatch = Math.abs(target - this.engageFrom) / target;
+          this.jolt = -(ds.kick + 3 * mismatch); this.joltT = this.t;
+          this.downs.push({ t: this.downFrom.t, from: this.downFrom.gear, to: this.gear, style: this.dstyle });
+          this.phase = 'cruise'; this.phaseT = 0; this.tau = 0.3; this.downDone = true;
+        }
       } else if (ph === 'brake') {
         this.accTarget = -3.0; this.load = 0.05;
         this.kmh = Math.max(0, this.kmh + this.accel * 3.6 * dt);
