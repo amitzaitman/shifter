@@ -594,10 +594,11 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
   resetColour();
 
   // ---------- coffee cup ----------
-  // The surface is a damped slosh mode driven by longitudinal acceleration (tilt), plus ripples from jerk above
-  // the road's usual level. A harsh jolt (same threshold as the 'harsh' grade) or a surface that reaches the rim
+  // Fed straight from the sensor (Coach.fastPath: 40 ms filter, not the scoring filter). The surface is a stiff,
+  // damped slosh mode driven by longitudinal acceleration (tilt), plus ripples from jerk above the road's usual level. A harsh jolt (same threshold as the 'harsh' grade) or a surface that reaches the rim
   // throws drops over the high side. Cup interior: x 8..112, y 10 (rim) .. 117 (bottom); resting level y = 42.
-  const CUP = { level: 42, w: 2 * Math.PI * 1.1, zeta: 0.22, gain: 0.085, maxTilt: 0.5 };
+  // stiff, well-damped liquid: follows the sensor within ~0.1 s but still moves like a liquid
+  const CUP = { level: 42, w: 2 * Math.PI * 4, zeta: 0.7, gain: 0.085, maxTilt: 0.5 };
   let cup = null;
   function resetCup() { cup = { th: 0, v: 0, rip: 0, ph: 0, drops: [], spillT: -9, t: null }; $('cup-drops').textContent = ''; }
   resetCup();
@@ -612,7 +613,8 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
       cup.v += (CUP.w * CUP.w * (target - cup.th) - 2 * CUP.zeta * CUP.w * cup.v) * h;
       cup.th += cup.v * h;
     }
-    const excess = ms ? Math.max(0, ms.j - ms.base) : 0;
+    // fast-path jerk above the road's usual level (a running ~5 s level, ×2.5 for headroom)
+    const excess = ms ? Math.max(0, ms.j - Math.max(2, 2.5 * ms.base)) : 0;
     cup.rip = Math.max(cup.rip * Math.exp(-dt / 0.35), Math.min(16, excess * 1.1));
     cup.ph += dt * 2 * Math.PI * 2.2;
     const slope = Math.tan(cup.th), edgeRise = Math.abs(slope) * 52 + cup.rip;
@@ -952,10 +954,11 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     const t0 = performance.now() / 1000;
     let wake = null;
     try { if (navigator.wakeLock) navigator.wakeLock.request('screen').then(w => { wake = w; }).catch(() => {}); } catch (e) { /* none */ }
+    let lastAn = -1;
     const tick = () => {
       const target = performance.now() / 1000 - t0;
       let guard = 0;
-      while (simT < target && guard++ < 40) {
+      while (simT < target && guard++ < 200) {
         const dt = sub / sr;
         sim.step(dt); simT += dt;
         synth.render(block, sim.rpm, sim.load, sim.kmh);
@@ -968,7 +971,8 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
           nextGps += 1;
         }
       }
-      if (simT < n / sr) return;
+      if (simT < n / sr || simT - lastAn < 1 / 12) return;  // sensors every ~16 ms, audio analysis at 12 fps
+      lastAn = simT;
       demoLevel = levelOf(buf);
       const tc = simT - (n / 2) / sr;
       const priors = coach.gears.complete ? coach.gears.predict(coach.speedAt(tc)) : null;
@@ -976,7 +980,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
       if (r.rpm) lastAudio = simT;
       coach.audio(tc, r);
     };
-    const timer = setInterval(tick, 83);
+    const timer = setInterval(tick, 16);
     run = {
       kind: 'demo', coach,
       clock: () => simT - (n / 2) / sr,

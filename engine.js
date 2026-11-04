@@ -317,7 +317,7 @@
       this.jerk = []; this.lp = null; this.lastMotion = null; this.gv = null;
       // ציר הנסיעה בתוך מישור הטלפון: S = Σ(תאוצת GPS × וקטור התאוצה הממוצע), W = Σ(תאוצת GPS²). PCA כגיבוי בלי GPS.
       this.accLog = []; this.axS = [0, 0, 0]; this.axW = 0; this.cov = null; this.pc = null; this.axisMode = 'all';
-      this._baseT = null; this._base = 0;
+      this.fastA = null; this.fastJ = 0; this.fastBase = null; this.fastT = null; this.fastSrc = null;
       this.state = 'track'; this.drop = null; this.refractUntil = 0;
       this.events = []; this.pending = [];
       this.lowSince = null; this.trace = []; this.lastTraceT = -1e9; this.startT = null;
@@ -398,7 +398,8 @@
         ax -= d * ux; ay -= d * uy; az -= d * uz;
         this.accLog.push({ t, a: [ax, ay, az] });
         while (this.accLog.length && this.accLog[0].t < t - 15) this.accLog.shift();
-        if (!this.hasGps) this.learnPCA(t, ax, ay, az);
+        this.learnPCA(t, ax, ay, az);  // לציון רק בלי GPS; לתצוגה תמיד
+        this.fastPath(t, ax, ay, az);
       }
       // רק הרכיב לאורך ציר הנסיעה (אם נלמד), כדי שפניות לא ייספרו כטלטלה
       const f = horiz && this.s.jerkAxis !== false ? this.forwardAxis() : null, mode = f ? (this.axW > 0 && this.hasGps ? 'gps' : 'pca') : 'all';
@@ -412,6 +413,30 @@
       this.lp = [nx, ny, nz]; this.lastMotion = t;
       this.jerk.push({ t, j });
       while (this.jerk.length && this.jerk[0].t < t - 15) this.jerk.shift();
+    }
+    // מסלול מהיר לתצוגה בלבד (כוס הקפה): ישר מהחיישן, סינון קל של 40ms, בלי קשר לסינון של הציון (0.12 שנ').
+    // הציר: מה-GPS אם נלמד; אחרת PCA; ועד אז ניחוש לפי כיוון הטלפון (מסך לנהג = הרכב נוסע לכיוון הגב של הטלפון,
+    // ואם הטלפון שוכב, לכיוון הקצה העליון). הסימן של ה-PCA מיושר לפי אותו ניחוש, או לפי ציר ה-GPS כשיש.
+    fastPath(t, ax, ay, az) {
+      const gn = Math.hypot(this.gv[0], this.gv[1], this.gv[2]), u = this.gv.map(v => v / gn);
+      const flat = (v) => { const d = v[0] * u[0] + v[1] * u[1] + v[2] * u[2], h = [v[0] - d * u[0], v[1] - d * u[1], v[2] - d * u[2]], n = Math.hypot(h[0], h[1], h[2]); return n > 0.3 ? h.map(q => q / n) : null; };
+      const guess = flat([0, 0, -1]) || flat([0, 1, 0]);
+      const gpsAx = this.hasGps ? this.forwardAxis() : null;
+      let fa = gpsAx;
+      if (!fa && this.pc && this.cov && this.cov.w > 0.15) {
+        const ref = guess || this.pc, sg = this.pc[0] * ref[0] + this.pc[1] * ref[1] + this.pc[2] * ref[2] < 0 ? -1 : 1;
+        fa = this.pc.map(q => q * sg);
+      }
+      if (!fa) fa = guess;
+      const src = gpsAx ? 'gps' : fa === guess ? 'guess' : 'pca';
+      const dt = this.fastT != null ? t - this.fastT : 0; this.fastT = t;
+      if (!fa) return;
+      const s = ax * fa[0] + ay * fa[1] + az * fa[2];
+      if (this.fastA == null || dt > 0.5 || src !== this.fastSrc) { this.fastA = s; this.fastJ = 0; this.fastSrc = src; return; }
+      if (dt <= 0) return;
+      const k = Math.min(1, dt / 0.04), n = this.fastA + k * (s - this.fastA), jf = Math.abs(n - this.fastA) / dt;
+      this.fastA = n; this.fastJ = jf;
+      this.fastBase = this.fastBase == null ? jf : this.fastBase + Math.min(1, dt / 5) * (jf - this.fastBase);  // ~5 שנ'
     }
     // כל זוג דגימות GPS: תאוצה לאורך הדרך (Δv/Δt) מול הממוצע של וקטור התאוצה האופקי באותו פרק זמן (אחרי תיקון ההשהיה).
     // הווקטור שמתואם הכי חזק עם תאוצת ה-GPS הוא ציר הנסיעה. שוכחים לאט (~50 שנ'), למקרה שהטלפון זז במעמד.
@@ -652,11 +677,10 @@
     }
 
     // --- תאוצה חיה לכוס הקפה: תאוצה לאורך הנסיעה (אם הציר נלמד), ה-jerk האחרון, ורעש הכביש ---
+    // לכוס הקפה: הערכים מהמסלול המהיר (ראו fastPath)
     motionState(t) {
-      if (!this.hasMotion || !this.lp) return null;
-      const last = this.jerk[this.jerk.length - 1];
-      if (this._baseT == null || t - this._baseT > 0.5) { this._baseT = t; this._base = this.jerkBaseline(t); }
-      return { a: this.axisMode === 'all' ? null : this.lp[0], j: last ? last.j : 0, base: this._base || 0, fresh: last ? t - last.t < 0.5 : false };
+      if (!this.hasMotion || this.fastT == null) return null;
+      return { a: this.fastA != null ? this.fastA : null, j: this.fastJ || 0, base: this.fastBase || 0, axis: this.fastSrc || null, fresh: t - this.fastT < 0.5 };
     }
 
     // --- מצב חי לתצוגה ---

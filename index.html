@@ -758,7 +758,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
       this.jerk = []; this.lp = null; this.lastMotion = null; this.gv = null;
       // ציר הנסיעה בתוך מישור הטלפון: S = Σ(תאוצת GPS × וקטור התאוצה הממוצע), W = Σ(תאוצת GPS²). PCA כגיבוי בלי GPS.
       this.accLog = []; this.axS = [0, 0, 0]; this.axW = 0; this.cov = null; this.pc = null; this.axisMode = 'all';
-      this._baseT = null; this._base = 0;
+      this.fastA = null; this.fastJ = 0; this.fastBase = null; this.fastT = null; this.fastSrc = null;
       this.state = 'track'; this.drop = null; this.refractUntil = 0;
       this.events = []; this.pending = [];
       this.lowSince = null; this.trace = []; this.lastTraceT = -1e9; this.startT = null;
@@ -839,7 +839,8 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
         ax -= d * ux; ay -= d * uy; az -= d * uz;
         this.accLog.push({ t, a: [ax, ay, az] });
         while (this.accLog.length && this.accLog[0].t < t - 15) this.accLog.shift();
-        if (!this.hasGps) this.learnPCA(t, ax, ay, az);
+        this.learnPCA(t, ax, ay, az);  // לציון רק בלי GPS; לתצוגה תמיד
+        this.fastPath(t, ax, ay, az);
       }
       // רק הרכיב לאורך ציר הנסיעה (אם נלמד), כדי שפניות לא ייספרו כטלטלה
       const f = horiz && this.s.jerkAxis !== false ? this.forwardAxis() : null, mode = f ? (this.axW > 0 && this.hasGps ? 'gps' : 'pca') : 'all';
@@ -853,6 +854,30 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
       this.lp = [nx, ny, nz]; this.lastMotion = t;
       this.jerk.push({ t, j });
       while (this.jerk.length && this.jerk[0].t < t - 15) this.jerk.shift();
+    }
+    // מסלול מהיר לתצוגה בלבד (כוס הקפה): ישר מהחיישן, סינון קל של 40ms, בלי קשר לסינון של הציון (0.12 שנ').
+    // הציר: מה-GPS אם נלמד; אחרת PCA; ועד אז ניחוש לפי כיוון הטלפון (מסך לנהג = הרכב נוסע לכיוון הגב של הטלפון,
+    // ואם הטלפון שוכב, לכיוון הקצה העליון). הסימן של ה-PCA מיושר לפי אותו ניחוש, או לפי ציר ה-GPS כשיש.
+    fastPath(t, ax, ay, az) {
+      const gn = Math.hypot(this.gv[0], this.gv[1], this.gv[2]), u = this.gv.map(v => v / gn);
+      const flat = (v) => { const d = v[0] * u[0] + v[1] * u[1] + v[2] * u[2], h = [v[0] - d * u[0], v[1] - d * u[1], v[2] - d * u[2]], n = Math.hypot(h[0], h[1], h[2]); return n > 0.3 ? h.map(q => q / n) : null; };
+      const guess = flat([0, 0, -1]) || flat([0, 1, 0]);
+      const gpsAx = this.hasGps ? this.forwardAxis() : null;
+      let fa = gpsAx;
+      if (!fa && this.pc && this.cov && this.cov.w > 0.15) {
+        const ref = guess || this.pc, sg = this.pc[0] * ref[0] + this.pc[1] * ref[1] + this.pc[2] * ref[2] < 0 ? -1 : 1;
+        fa = this.pc.map(q => q * sg);
+      }
+      if (!fa) fa = guess;
+      const src = gpsAx ? 'gps' : fa === guess ? 'guess' : 'pca';
+      const dt = this.fastT != null ? t - this.fastT : 0; this.fastT = t;
+      if (!fa) return;
+      const s = ax * fa[0] + ay * fa[1] + az * fa[2];
+      if (this.fastA == null || dt > 0.5 || src !== this.fastSrc) { this.fastA = s; this.fastJ = 0; this.fastSrc = src; return; }
+      if (dt <= 0) return;
+      const k = Math.min(1, dt / 0.04), n = this.fastA + k * (s - this.fastA), jf = Math.abs(n - this.fastA) / dt;
+      this.fastA = n; this.fastJ = jf;
+      this.fastBase = this.fastBase == null ? jf : this.fastBase + Math.min(1, dt / 5) * (jf - this.fastBase);  // ~5 שנ'
     }
     // כל זוג דגימות GPS: תאוצה לאורך הדרך (Δv/Δt) מול הממוצע של וקטור התאוצה האופקי באותו פרק זמן (אחרי תיקון ההשהיה).
     // הווקטור שמתואם הכי חזק עם תאוצת ה-GPS הוא ציר הנסיעה. שוכחים לאט (~50 שנ'), למקרה שהטלפון זז במעמד.
@@ -1093,11 +1118,10 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     }
 
     // --- תאוצה חיה לכוס הקפה: תאוצה לאורך הנסיעה (אם הציר נלמד), ה-jerk האחרון, ורעש הכביש ---
+    // לכוס הקפה: הערכים מהמסלול המהיר (ראו fastPath)
     motionState(t) {
-      if (!this.hasMotion || !this.lp) return null;
-      const last = this.jerk[this.jerk.length - 1];
-      if (this._baseT == null || t - this._baseT > 0.5) { this._baseT = t; this._base = this.jerkBaseline(t); }
-      return { a: this.axisMode === 'all' ? null : this.lp[0], j: last ? last.j : 0, base: this._base || 0, fresh: last ? t - last.t < 0.5 : false };
+      if (!this.hasMotion || this.fastT == null) return null;
+      return { a: this.fastA != null ? this.fastA : null, j: this.fastJ || 0, base: this.fastBase || 0, axis: this.fastSrc || null, fresh: t - this.fastT < 0.5 };
     }
 
     // --- מצב חי לתצוגה ---
@@ -1565,10 +1589,11 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
   resetColour();
 
   // ---------- coffee cup ----------
-  // The surface is a damped slosh mode driven by longitudinal acceleration (tilt), plus ripples from jerk above
-  // the road's usual level. A harsh jolt (same threshold as the 'harsh' grade) or a surface that reaches the rim
+  // Fed straight from the sensor (Coach.fastPath: 40 ms filter, not the scoring filter). The surface is a stiff,
+  // damped slosh mode driven by longitudinal acceleration (tilt), plus ripples from jerk above the road's usual level. A harsh jolt (same threshold as the 'harsh' grade) or a surface that reaches the rim
   // throws drops over the high side. Cup interior: x 8..112, y 10 (rim) .. 117 (bottom); resting level y = 42.
-  const CUP = { level: 42, w: 2 * Math.PI * 1.1, zeta: 0.22, gain: 0.085, maxTilt: 0.5 };
+  // stiff, well-damped liquid: follows the sensor within ~0.1 s but still moves like a liquid
+  const CUP = { level: 42, w: 2 * Math.PI * 4, zeta: 0.7, gain: 0.085, maxTilt: 0.5 };
   let cup = null;
   function resetCup() { cup = { th: 0, v: 0, rip: 0, ph: 0, drops: [], spillT: -9, t: null }; $('cup-drops').textContent = ''; }
   resetCup();
@@ -1583,7 +1608,8 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
       cup.v += (CUP.w * CUP.w * (target - cup.th) - 2 * CUP.zeta * CUP.w * cup.v) * h;
       cup.th += cup.v * h;
     }
-    const excess = ms ? Math.max(0, ms.j - ms.base) : 0;
+    // fast-path jerk above the road's usual level (a running ~5 s level, ×2.5 for headroom)
+    const excess = ms ? Math.max(0, ms.j - Math.max(2, 2.5 * ms.base)) : 0;
     cup.rip = Math.max(cup.rip * Math.exp(-dt / 0.35), Math.min(16, excess * 1.1));
     cup.ph += dt * 2 * Math.PI * 2.2;
     const slope = Math.tan(cup.th), edgeRise = Math.abs(slope) * 52 + cup.rip;
@@ -1923,10 +1949,11 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     const t0 = performance.now() / 1000;
     let wake = null;
     try { if (navigator.wakeLock) navigator.wakeLock.request('screen').then(w => { wake = w; }).catch(() => {}); } catch (e) { /* none */ }
+    let lastAn = -1;
     const tick = () => {
       const target = performance.now() / 1000 - t0;
       let guard = 0;
-      while (simT < target && guard++ < 40) {
+      while (simT < target && guard++ < 200) {
         const dt = sub / sr;
         sim.step(dt); simT += dt;
         synth.render(block, sim.rpm, sim.load, sim.kmh);
@@ -1939,7 +1966,8 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
           nextGps += 1;
         }
       }
-      if (simT < n / sr) return;
+      if (simT < n / sr || simT - lastAn < 1 / 12) return;  // sensors every ~16 ms, audio analysis at 12 fps
+      lastAn = simT;
       demoLevel = levelOf(buf);
       const tc = simT - (n / 2) / sr;
       const priors = coach.gears.complete ? coach.gears.predict(coach.speedAt(tc)) : null;
@@ -1947,7 +1975,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
       if (r.rpm) lastAudio = simT;
       coach.audio(tc, r);
     };
-    const timer = setInterval(tick, 83);
+    const timer = setInterval(tick, 16);
     run = {
       kind: 'demo', coach,
       clock: () => simT - (n / 2) / sr,
