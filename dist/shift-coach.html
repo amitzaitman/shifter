@@ -431,7 +431,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
         <div id="learn-body" class="small"></div>
         <div class="row"><button class="btn" id="learn-reset">אפס למידה</button></div>
       </div>
-      <p class="small muted" style="text-align:center">גרסה <span class="num">04.11.2026 19:48</span></p>
+      <p class="small muted" style="text-align:center">גרסה <span class="num">04.11.2026 21:04</span></p>
     </div>
   </main>
 </div>
@@ -868,13 +868,14 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
       this.lowSince = null; this.trace = []; this.lastTraceT = -1e9; this.startT = null;
       this.hasGps = false; this.hasMotion = false;
       this.rh = []; this.downRefract = 0; this.stopSince = null; this.launch = null;
+      this.lonLog = []; this.candidates = []; this.candNext = -1e9;
       this.onEvent = this.onEvent || null; this.onEventUpdate = this.onEventUpdate || null;
     }
 
     // --- קלטים ---
     audio(t, r) {
       if (this.startT == null) this.startT = t;
-      this.hist.push({ t, rpm: r.rpm });
+      this.hist.push({ t, rpm: r.rpm, conf: r.conf });
       while (this.hist.length && this.hist[0].t < t - 8) this.hist.shift();
       if (t - this.lastTraceT >= 0.25) {
         this.lastTraceT = t;
@@ -884,6 +885,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
       this.detect(t);
       this.detectDown(t);
       this.detectLaunch(t);
+      this.scanCandidates(t);
       this.flushPending(t);
     }
     // כל דגימת GPS: מחשבים יחס סל"ד/קמ"ש לכל פריימי הסאונד שבין שתי הדגימות האחרונות.
@@ -966,6 +968,8 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
       const j = Math.hypot(n2[0] - p2[0], n2[1] - p2[1], n2[2] - p2[2]) / dt;
       this.lp = q; this.lp2 = n2; this.lastMotion = t;
       this.jerk.push({ t, j });
+      // longitudinal accel after the scoring filter, for the candidate scan (only once the travel axis is known)
+      if (mode !== 'all') { this.lonLog.push({ t, a: n2[0] }); while (this.lonLog.length && this.lonLog[0].t < t - 15) this.lonLog.shift(); }
       if (mode !== 'all') this.wdStep(t, v[0]);
       while (this.jerk.length && this.jerk[0].t < t - 15) this.jerk.shift();
     }
@@ -1290,6 +1294,50 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
         if (this.onEventUpdate) this.onEventUpdate(p.ev);
         return false;
       });
+    }
+
+    // --- מועמדים: כל רגע שאולי היה בו שינוי הילוך או טלטלה, גם אם לא הוכרז כאירוע ---
+    // בשביל למידה: כך אפשר להשוות סימונים לרגעים שהמנוע פספס או דחה, וללמוד גלאי.
+    // נסרק בעיכוב של 2.6 שנ' (צריך 2.5 שנ' אחרי הרגע), כל 0.25 שנ'. מאפיינים:
+    //   q   היחס סל"ד/קמ"ש אחרי ÷ לפני (חציונים, רק כשהיחס יציב בשני הצדדים)
+    //   pre/dip/rec  תאוצה לאורך הנסיעה: ממוצע לפני, מינימום, והשיא שאחרי המינימום (נפילת כוח)
+    //   jx  שיא ה-jerk מעל רעש הכביש;  conf  ביטחון ממוצע של ה-tracker;  kmh  מהירות
+    scanCandidates(t) {
+      const tc = t - 2.6;
+      if (this.startT == null || tc < this.startT + 3 || tc < this.candNext) return;
+      this.candNext = tc + 0.25;
+      const ratioIn = (a, b) => {
+        const v = [];
+        for (const f of this.hist) { if (f.t < a || f.t > b || !f.rpm) continue; const k = this.speedAt(f.t); if (k > 10) v.push(f.rpm / k); }
+        if (v.length < 6) return null;
+        const q = v.slice().sort((x, y) => x - y), m = q[q.length >> 1];
+        return { m, stab: v.filter(x => Math.abs(x / m - 1) < 0.06).length / v.length };
+      };
+      const B = ratioIn(tc - 2.5, tc - 0.4), A = ratioIn(tc + 0.4, tc + 2.5);
+      const q = B && A && B.stab >= 0.7 && A.stab >= 0.7 ? A.m / B.m : null;
+      let pre = null, dip = null, rec = null, dipT = null;
+      const L = this.lonLog.filter(e => e.t >= tc - 1.2 && e.t <= tc + 2.5);
+      if (L.length > 20) {
+        const P = L.filter(e => e.t < tc - 0.4); if (P.length) pre = P.reduce((s, e) => s + e.a, 0) / P.length;
+        for (const e of L) if (e.t >= tc - 0.4 && e.t <= tc + 1.0 && (dip == null || e.a < dip)) { dip = e.a; dipT = e.t; }
+        if (dipT != null) for (const e of L) if (e.t > dipT && e.t <= dipT + 1.5 && (rec == null || e.a > rec)) rec = e.a;
+      }
+      const jm = this.maxJerk(tc - 0.5, tc + 1.5), jx = jm != null ? Math.max(0, jm - this.jerkBaseline(tc - 0.5)) : null;
+      const cf = this.hist.filter(f => f.t >= tc - 2.5 && f.t <= tc + 2.5 && f.conf != null);
+      const conf = cf.length ? cf.reduce((s, f) => s + f.conf, 0) / cf.length : null;
+      const ratioCh = q != null && (q < 0.88 || q > 1.13) && q > 0.45 && q < 2.2;
+      const torque = pre != null && dip != null && pre >= 0.3 && pre - dip >= 0.6;
+      const jolt = jx != null && jx >= this.smoothThresholds().ok;
+      if (!(ratioCh || torque || jolt)) return;
+      const r2 = (v) => v == null ? null : Math.round(v * 100) / 100;
+      const c = { t: r2(tc - this.startT), tAbs: tc, q: r2(q), rB: B ? Math.round(B.m) : null, rA: A ? Math.round(A.m) : null,
+        pre: r2(pre), dip: r2(dip), rec: r2(rec), jx: r2(jx), conf: r2(conf), kmh: r2(this.speedAt(tc)), axis: this.axisMode,
+        why: [ratioCh ? 'ratio' : null, torque ? 'torque' : null, jolt ? 'jolt' : null].filter(Boolean).join('+') };
+      c.strength = (q ? Math.abs(Math.log(q)) * 5 : 0) + (pre != null && dip != null ? Math.max(0, pre - dip) : 0) + (jx || 0) / 2;
+      // one candidate per 2 s: keep the stronger
+      const last = this.candidates[this.candidates.length - 1];
+      if (last && tc - last.tAbs < 2) { if (c.strength > last.strength) this.candidates[this.candidates.length - 1] = c; }
+      else this.candidates.push(c);
     }
 
     // --- תאוצה חיה לכוס הקפה: תאוצה לאורך הנסיעה (אם הציר נלמד), ה-jerk האחרון, ורעש הכביש ---
