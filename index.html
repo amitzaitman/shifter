@@ -177,6 +177,15 @@ label.btn { position: relative; }
 .cupbox .drop { fill: var(--coffee); }
 .cupbox.idle { opacity: .35; }
 .no-cup .cupbox { display: none; }
+/* calibration drive: a passenger taps one button right after each gear change, rating how it felt */
+.calib { display: none; gap: 8px; margin: 0 calc(var(--bar-w) + 14px) 10px; }
+.calib-on .calib { display: grid; grid-template-columns: repeat(3, 1fr); }
+.calib button { min-height: 64px; border-radius: 16px; border: 0; font-size: 18px; font-weight: 700; color: #071015; transition: transform .08s, filter .08s; }
+.calib button:active, .calib button.hit { transform: scale(.94); filter: brightness(1.25); }
+.calib .c-s { background: var(--good); } .calib .c-o { background: var(--slight); } .calib .c-h { background: var(--late); }
+.calib-count { text-align: center; font-size: 13px; color: color-mix(in oklab, var(--fg) 60%, transparent); margin: -4px 0 6px; display: none; }
+.calib-on .calib-count { display: block; }
+.calib-on .cupbox { height: min(36vh, 80vw); height: min(36dvh, 80vw); }
 .dock {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
   margin: 0 calc(var(--frame-w) + 18px) calc(var(--frame-w) + 18px);
@@ -373,6 +382,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
         <div class="switch"><label for="in-nums">להציג את מספר ההילוך על המסך</label><input type="checkbox" id="in-nums" checked></div>
         <div class="switch"><label for="in-rpm">להציג סל"ד (כדי לבדוק מול שעון הסל"ד ברכב)</label><input type="checkbox" id="in-rpm"></div>
         <div class="switch"><label for="in-cup">כוס קפה שמראה את התאוצה בזמן נסיעה</label><input type="checkbox" id="in-cup" checked></div>
+        <div class="switch"><label for="in-calib">נסיעת כיול עם נוסע: שלושה כפתורים לסימון כל העברה (מפעיל גם הקלטה)</label><input type="checkbox" id="in-calib"></div>
         <div class="switch"><label for="in-record">לשמור הקלטה של כל נסיעה (קול, GPS ותאוצה), בשביל כיול</label><input type="checkbox" id="in-record"></div>
         <p class="small muted">ההקלטה כוללת את המיקום שלך. בסוף הנסיעה יופיע במסך הסיכום כפתור לשיתוף הקובץ. הקובץ לא נשמר בטלפון: אם תסגור את הדף לפני שתשתף, הוא יאבד.</p>
       </div>
@@ -397,7 +407,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
         <h3>מה נמדד ואיך</h3>
         <p class="small muted">סל"ד: מהצליל של המנוע (תדר ההצתות). הילוך: יחס סל"ד למהירות מה-GPS, נלמד לבד אחרי כמה דקות נסיעה. חלקות: קפיצות בתאוצה מהחיישן של הטלפון, ובלי חיישן לפי כמה הסל"ד צנח לפני שהקלאץ' נתפס. זו גרסה ראשונה: הספים נקבעו מראש ועוד לא כוילו ברכב אמיתי.</p>
       </div>
-      <p class="small muted" style="text-align:center">גרסה <span class="num">04.11.2026 11:32</span></p>
+      <p class="small muted" style="text-align:center">גרסה <span class="num">04.11.2026 11:52</span></p>
     </div>
   </main>
 </div>
@@ -434,6 +444,12 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
       </svg>
     </div>
   </div>
+  <div class="calib" id="calib" role="group" aria-label="סימון העברה לכיול">
+    <button class="c-s" data-k="smooth">חלקה</button>
+    <button class="c-o" data-k="ok">טלטלה</button>
+    <button class="c-h" data-k="harsh">קפיצה</button>
+  </div>
+  <div class="calib-count" id="calib-count">לנוסע: לחיצה אחת מיד אחרי כל העברה, הורדה או זינוק</div>
   <div class="dock">
     <div class="row" style="flex-wrap:nowrap">
       <button class="chip" id="d-mode">חסכוני</button>
@@ -1462,7 +1478,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     get(k, d) { try { const v = localStorage.getItem('shiftcoach.' + k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
     set(k, v) { try { localStorage.setItem('shiftcoach.' + k, JSON.stringify(v)); } catch (e) { /* storage blocked */ } }
   };
-  const DEFAULTS = { mode: 'eco', ecoTarget: 2500, redline: 6500, nGears: 5, cylinders: 4, rpmScale: 1, sound: false, numbers: true, record: false, cup: true, showRpm: false };
+  const DEFAULTS = { mode: 'eco', ecoTarget: 2500, redline: 6500, nGears: 5, cylinders: 4, rpmScale: 1, sound: false, numbers: true, record: false, cup: true, showRpm: false, calib: false };
   let settings = Object.assign({}, DEFAULTS, LS.get('settings', {}));
   let gearModel = E.GearModel.fromJSON(LS.get('gears', null), settings.nGears);
   let session = LS.get('session', null);
@@ -1572,6 +1588,8 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     $('stage').classList.toggle('hide-num', !settings.numbers);
     $('stage').classList.toggle('no-cup', settings.cup === false);
     $('d-rpmcal').hidden = !settings.showRpm;
+    $('stage').classList.toggle('calib-on', !!settings.calib && kind === 'live');
+    calibN = 0; $('calib-count').textContent = 'לנוסע: לחיצה אחת מיד אחרי כל העברה, הורדה או זינוק';
     resetCup();
     pillsKey = ''; ['s-mic', 's-gps', 's-mot'].forEach(id => { $(id).dataset.st = ''; });
     $('d-mode').textContent = settings.mode === 'sport' ? 'ספורטיבי' : 'חסכוני';
@@ -1772,6 +1790,14 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     show('summary');
   }
   $('btn-stop').addEventListener('click', stopRun);
+  // calibration labels: [t, 'smooth' | 'ok' | 'harsh'] on the recording clock
+  let calibN = 0;
+  $('calib').addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b || !run || !run.recorder) return;
+    run.recorder.label(performance.now() / 1000, b.dataset.k);
+    calibN++; $('calib-count').textContent = `סומנו ${calibN}`;
+    b.classList.add('hit'); setTimeout(() => b.classList.remove('hit'), 160);
+  });
   $('d-mode').addEventListener('click', () => {
     settings.mode = settings.mode === 'sport' ? 'eco' : 'sport'; saveSettings();
     if (run) run.coach.configure(settings);
@@ -1809,7 +1835,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
       try { return new MediaRecorder(stream, Object.assign({ audioBitsPerSecond: 96000 }, mime ? { mimeType: mime } : {})); }
       catch (e) { try { return new MediaRecorder(stream); } catch (e2) { return null; } }
     };
-    const gpsLog = [], motLog = [], live = [], segs = [];
+    const gpsLog = [], motLog = [], live = [], segs = [], labels = [];
     let t0 = null, motSrc = null, cur = null, stopping = false;
     const now = () => performance.now() / 1000;
     const rel = (t) => t - (t0 == null ? now() : t0);
@@ -1819,7 +1845,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
       const seg = { mr, chunks: [], t0: null, started: now(), lastData: now(), done: null };
       seg.done = new Promise(res => { mr.onstop = () => { seg.mime = mr.mimeType || mime || (seg.chunks[0] && seg.chunks[0].type) || 'audio/mp4'; res(); }; });
       mr.ondataavailable = (e) => { if (e.data && e.data.size) { seg.chunks.push(e.data); seg.lastData = now(); } };
-      mr.onstart = () => { const n = now(); if (t0 == null) { t0 = n; gpsLog.length = motLog.length = live.length = 0; } seg.t0 = n - t0; seg.started = n; seg.lastData = n; };
+      mr.onstart = () => { const n = now(); if (t0 == null) { t0 = n; gpsLog.length = motLog.length = live.length = labels.length = 0; } seg.t0 = n - t0; seg.started = n; seg.lastData = n; };
       try { mr.start(1000); } catch (e) { return null; }
       segs.push(seg); cur = seg; return seg;
     }
@@ -1842,6 +1868,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
       // [t, ax, ay, az] or [t, ax, ay, az, gx, gy, gz]
       motion(t, a, gv, src) { motSrc = src; motLog.push([r3(rel(t)), r3(a[0]), r3(a[1]), r3(a[2])].concat(gv ? gv.map(v => Math.round(v * 100) / 100) : [])); },
       frame(tc, rpm) { live.push([r3(rel(tc)), rpm ? Math.round(rpm) : null]); },
+      label(t, k) { labels.push([r3(rel(t)), k]); },
       finish(sess) {
         stopping = true; clearInterval(watch);
         try { cur.mr.state !== 'inactive' ? cur.mr.stop() : cur.mr.onstop(); } catch (e) { /* already stopped */ }
@@ -1853,7 +1880,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
               const rec = {
                 format: 'shift-coach-recording', v: 2, startedAt, userAgent: navigator.userAgent,
                 settings: settingsAtStart, sampleRate, fftN: 8192, motionSrc: motSrc, gearsAtStart,
-                gps: gpsLog, motion: motLog, live, events: sess ? sess.events : [],
+                gps: gpsLog, motion: motLog, live, labels, events: sess ? sess.events : [],
                 audio: { mime: parts[0].mime, bytes: segments.reduce((a, x) => a + x.bytes, 0), segments }
               };
               const d = new Date(startedAt), pad = (x) => String(x).padStart(2, '0');
@@ -1929,7 +1956,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
       const buf = new Float32Array(8192);
       const spec = new E.Spectrum(8192), tracker = makeTracker(ctx.sampleRate);
       const coach = makeCoach(gearModel);
-      const recorder = settings.record ? startRecording(stream, ctx.sampleRate) : null;
+      const recorder = settings.record || settings.calib ? startRecording(stream, ctx.sampleRate) : null;
       let lastAudio = 0, motLast = 0, hp = null, micLevel = 0;
       // a: acceleration without gravity; gv: gravity vector (or null), used by the coach to drop the vertical part
       const feedMotion = (now, a, gv, src) => {
@@ -2127,12 +2154,24 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
 
   // ---------- SUMMARY ----------
   let selected = null;
+  // the drive recording's share card; shown even when the drive was too short for a summary, so a file is never lost
+  function recordingCard() {
+    const rc = document.createElement('section'); rc.className = 'card';
+    if (recording.state === 'pending') rc.innerHTML = `<h3>הקלטת הנסיעה</h3><p class="muted">מכין את הקובץ…</p>`;
+    else if (recording.state === 'error') rc.innerHTML = `<h3>הקלטת הנסיעה</h3><p class="muted">ההקלטה נכשלה (${recording.msg}).</p>`;
+    else {
+      rc.innerHTML = `<h3>הקלטת הנסיעה</h3><p class="small muted">הקובץ <span class="num">${recording.file.name}</span> (<span class="num">${(recording.file.size / 1048576).toFixed(1)} MB</span>) כולל את הקול, ה-GPS והתאוצה. הוא יאבד אם תסגור את הדף.</p><button class="btn primary" id="btn-share-rec">שתף הקלטה</button>`;
+      rc.querySelector('#btn-share-rec').addEventListener('click', () => shareRecording(recording.file));
+    }
+    return rc;
+  }
   function renderSummary() {
     const w = $('summary-wrap');
     w.textContent = '';
     if (!session) {
       w.innerHTML = `<div class="empty"><div class="tile" aria-hidden="true"></div><h2>עוד אין נסיעה</h2><p>הפעל הדגמה, נסיעה או ניתוח הקלטה. כל העברה תופיע כאן כריבוע: מסגרת לתזמון, מילוי לחלקות.</p><button class="btn primary" id="go-demo">הפעל הדגמה</button></div>`;
       $('go-demo').addEventListener('click', () => { show('drive'); $('btn-demo').click(); });
+      if (recording) w.prepend(recordingCard());
       return;
     }
     const s = session, sum = s.summary, ev = s.events;
@@ -2150,16 +2189,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
       <div class="stat"><div class="v num">${ev.length}</div><div class="l">העברות</div></div>`;
     w.appendChild(stats);
 
-    if (recording) {
-      const rc = document.createElement('section'); rc.className = 'card';
-      if (recording.state === 'pending') rc.innerHTML = `<h3>הקלטת הנסיעה</h3><p class="muted">מכין את הקובץ…</p>`;
-      else if (recording.state === 'error') rc.innerHTML = `<h3>הקלטת הנסיעה</h3><p class="muted">ההקלטה נכשלה (${recording.msg}).</p>`;
-      else {
-        rc.innerHTML = `<h3>הקלטת הנסיעה</h3><p class="small muted">הקובץ <span class="num">${recording.file.name}</span> (<span class="num">${(recording.file.size / 1048576).toFixed(1)} MB</span>) כולל את הקול, ה-GPS והתאוצה. הוא יאבד אם תסגור את הדף.</p><button class="btn primary" id="btn-share-rec">שתף הקלטה</button>`;
-        rc.querySelector('#btn-share-rec').addEventListener('click', () => shareRecording(recording.file));
-      }
-      w.appendChild(rc);
-    }
+    if (recording) w.appendChild(recordingCard());
 
     const mcard = document.createElement('section'); mcard.className = 'card';
     mcard.innerHTML = `<h3>כל העברה: מילוי = חלקות, מסגרת = תזמון</h3>`;
@@ -2312,7 +2342,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     const ts = E.thresholds(Object.assign({}, settings, { mode: 'sport' }));
     $('eco-desc').textContent = `בזמן: ${fmt(te.goodLo)}–${fmt(te.goodHi)}. מוקדם: מתחת ל-${fmt(te.goodLo)}, או אם אחרי ההעברה המנוע ירד מתחת ל-${fmt(te.lug)}.`;
     $('red-desc').textContent = `בספורטיבי, בזמן: ${fmt(ts.goodLo)}–${fmt(ts.goodHi)}.`;
-    $('in-sound').checked = !!settings.sound; $('in-nums').checked = !!settings.numbers; $('in-record').checked = !!settings.record; $('in-cup').checked = settings.cup !== false; $('in-rpm').checked = !!settings.showRpm;
+    $('in-sound').checked = !!settings.sound; $('in-nums').checked = !!settings.numbers; $('in-record').checked = !!settings.record; $('in-cup').checked = settings.cup !== false; $('in-rpm').checked = !!settings.showRpm; $('in-calib').checked = !!settings.calib;
     const gs = gearModel.solve();
     $('gear-status').textContent = gs.length
       ? (gearModel.complete ? `כל ${settings.nGears} ההילוכים נלמדו. הצבעים יודעים עכשיו גם באיזה הילוך אתה.` : `נלמדו ${gs.length} מתוך ${settings.nGears}. ממשיך ללמוד בכל נסיעה.`)
@@ -2350,6 +2380,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
   $('in-record').addEventListener('change', (e) => { settings.record = e.target.checked; saveSettings(); });
   $('in-cup').addEventListener('change', (e) => { settings.cup = e.target.checked; saveSettings(); });
   $('in-rpm').addEventListener('change', (e) => { settings.showRpm = e.target.checked; saveSettings(); });
+  $('in-calib').addEventListener('change', (e) => { settings.calib = e.target.checked; if (settings.calib) settings.record = true; saveSettings(); renderSettings(); });
   $('in-nums').addEventListener('change', (e) => { settings.numbers = e.target.checked; saveSettings(); });
   window.addEventListener('resize', () => { if (!$('view-summary').hidden && session) drawChart($('chart'), session); });
 

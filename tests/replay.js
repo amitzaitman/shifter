@@ -105,3 +105,33 @@ if (csv) {
   console.log(`\nwrote ${csv} (${rows.length - 1} frames)`);
 }
 if (flag('-v')) console.log('\nlive events:', JSON.stringify(rec.events || [], null, 0));
+
+// --- calibration labels (a passenger tapped smooth / ok / harsh right after each gear change) ---
+if ((rec.labels || []).length) {
+  const labs = rec.labels.map(([t, k]) => ({ t: t + offset, k }));
+  const evs = c.events.map(e => ({ e, t: e.t + (c.startT || 0), used: false }));
+  const ex = (e) => e.jerk != null ? Math.max(0, e.jerk - (e.jerkBase || 0)) : null;
+  console.log(`\nlabels      ${labs.length} (smooth ${labs.filter(l => l.k === 'smooth').length}, ok ${labs.filter(l => l.k === 'ok').length}, harsh ${labs.filter(l => l.k === 'harsh').length})`);
+  console.log('  label t   label    engine event (within 4 s before the tap)   jerk above road');
+  const rows = [];
+  for (const l of labs) {
+    // the tap comes after the shift: take the closest event that started up to 4 s before (or 1 s after) the tap
+    let best = null;
+    for (const v of evs) { const d = l.t - v.t; if (!v.used && d > -1 && d < 4 && (!best || Math.abs(d - 1) < Math.abs(l.t - best.t - 1))) best = v; }
+    if (best) best.used = true;
+    const e = best && best.e;
+    rows.push({ k: l.k, e });
+    console.log(`  ${l.t.toFixed(1).padStart(7)}   ${l.k.padEnd(7)}  ${e ? `${(e.kind || 'up').padEnd(6)} ${String(e.smooth).padEnd(7)} at ${best.t.toFixed(1)}` : 'MISSED'.padEnd(29)}   ${e && ex(e) != null ? ex(e).toFixed(1) : '-'}`);
+  }
+  const hit = rows.filter(x => x.e).length, extra = evs.filter(v => !v.used).length;
+  console.log(`detection   ${hit}/${labs.length} labelled changes found; ${extra} engine events with no label (false or unlabelled)`);
+  const K = ['smooth', 'ok', 'harsh'];
+  console.log('confusion   rows = label, columns = engine grade');
+  for (const k of K) console.log(`  ${k.padEnd(7)} ` + K.map(g => String(rows.filter(x => x.k === k && x.e && x.e.smooth === g).length).padStart(4)).join(''));
+  // where would the thresholds go? jerk above road per label
+  for (const k of K) {
+    const v = rows.filter(x => x.k === k && x.e && ex(x.e) != null).map(x => ex(x.e)).sort((a, b) => a - b);
+    if (v.length) console.log(`  ${k.padEnd(7)} jerk above road: min ${v[0].toFixed(1)}  median ${v[v.length >> 1].toFixed(1)}  max ${v[v.length - 1].toFixed(1)}  (n ${v.length})`);
+  }
+  console.log(`current thresholds: smooth < ${E.SMOOTH_TH.ok}, ok < ${E.SMOOTH_TH.harsh}, harsh above`);
+}
