@@ -2,7 +2,10 @@ import re, pathlib
 root = pathlib.Path(__file__).parent
 app = (root/'app.html').read_text()
 eng = (root/'engine.js').read_text()
-page = app.replace('/*ENGINE*/', eng)
+# build stamp (Israel time), shown at the bottom of the settings screen so you can tell which version is loaded
+import datetime, zoneinfo
+stamp = datetime.datetime.now(zoneinfo.ZoneInfo('Asia/Jerusalem')).strftime('%d.%m.%Y %H:%M')
+page = app.replace('/*ENGINE*/', eng).replace('__BUILD__', stamp)
 out = root/'dist'; out.mkdir(exist_ok=True)
 (out/'shift-coach.html').write_text(page)
 # hosted version: full document for GitHub Pages / any HTTPS host

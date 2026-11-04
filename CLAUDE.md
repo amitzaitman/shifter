@@ -94,7 +94,7 @@
 - **בדיקה בלי רכב:** `node tests/make_recording.js out.json 130 eco 0.25` יוצר הקלטה מדומה עם הזזה ידועה. ‏replay אמור למצוא את ההזזה בדיוק של בערך ±0.04 שנ'.
 
 ## עבודה
-- אחרי כל שינוי: `python3 build.py`. הוא בונה את `index.html` בשורש (בשביל Pages) ואת `dist/shift-coach.html` (בשביל דף ה-Artifact).
+- אחרי כל שינוי: `python3 build.py`. הוא מטביע תאריך ושעה (שעון ישראל) במקום `__BUILD__`, ואלה מוצגים בתחתית מסך ההגדרות כ"גרסה". הוא בונה את `index.html` בשורש (בשביל Pages) ואת `dist/shift-coach.html` (בשביל דף ה-Artifact).
 - בדיקות: `node tests/test_engine.js` (רשת מלאה), `node tests/test_engine.js v 1 eco` (פירוט העברות).
 - צילומי מסך: `python3 tests/screenshot.py` (צריך Playwright ו-Chrome).
 - ממשק בעברית ו-RTL. מספרים ב-`.num` (כיוון LTR).
