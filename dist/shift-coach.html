@@ -144,24 +144,47 @@ label.btn { position: relative; }
   .hero-tile, .hero-tile .f { animation: none; }
   .hero-tile .f { stroke-dashoffset: 30; stroke: var(--good); }
 }
-.dash { margin-top: calc(var(--frame-w) + 20px); }
-.dash { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 0 calc(var(--frame-w) + 20px); }
-.gear { min-height: 0.9em; font-family: var(--font-num); font-weight: 600; font-size: clamp(90px, 30vmin, 220px); line-height: 0.9; color: color-mix(in oklab, var(--fg) 40%, transparent); }
-.rpm { font-family: var(--font-num); font-size: clamp(22px, 6vmin, 40px); color: color-mix(in oklab, var(--fg) 50%, transparent); }
-.rpm small, .kmh small { font-family: var(--font-body); font-size: 0.5em; margin-inline-start: 6px; }
-.kmh { font-family: var(--font-num); font-size: clamp(15px, 3.6vmin, 22px); color: color-mix(in oklab, var(--fg) 38%, transparent); }
+.topbar { display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  margin: calc(var(--frame-w) + 16px) calc(var(--frame-w) + 18px) 0; }
+/* readable at a glance from a mount: a huge gear, a big rpm, speed below. Shadow keeps them legible on any feedback colour. */
+.dash { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0; padding: 0 calc(var(--frame-w) + 20px); min-height: 0;
+  text-shadow: 0 2px 18px color-mix(in oklab, var(--bg) 55%, transparent); }
+.gear { font-family: var(--font-num); font-weight: 700; font-size: min(38vh, 80vw); line-height: 0.82; color: color-mix(in oklab, var(--fg) 92%, transparent); font-variant-numeric: tabular-nums; }
+.rpm { font-family: var(--font-num); font-weight: 600; font-size: clamp(44px, min(10vh, 16vw), 104px); line-height: 1; color: color-mix(in oklab, var(--fg) 85%, transparent); font-variant-numeric: tabular-nums; }
+.kmh { font-family: var(--font-num); font-weight: 500; font-size: clamp(24px, min(4.6vh, 7.5vw), 46px); line-height: 1.2; margin-top: 4px; color: color-mix(in oklab, var(--fg) 62%, transparent); font-variant-numeric: tabular-nums; }
+.rpm span, .kmh span { direction: ltr; unicode-bidi: isolate; }
+.rpm small, .kmh small { font-family: var(--font-body); font-weight: 500; font-size: 0.36em; margin-inline-start: 0.35em; color: color-mix(in oklab, var(--fg) 55%, transparent); letter-spacing: .02em; }
+/* until the gears are learned there is no gear number: rpm takes the hero spot */
+.dash.no-gear .gear { display: none; }
+.dash.no-gear .rpm { font-size: clamp(64px, min(17vh, 26vw), 170px); }
 .hide-num .gear, .hide-num .rpm, .hide-num .kmh { visibility: hidden; }
 .dock {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
   margin: 0 calc(var(--frame-w) + 18px) calc(var(--frame-w) + 18px);
 }
-.sensors { display: flex; gap: 12px; font-size: 12px; color: color-mix(in oklab, var(--fg) 55%, transparent); }
-.sensors span { display: inline-flex; align-items: center; gap: 5px; }
-.sensors b { width: 8px; height: 8px; border-radius: 50%; background: var(--line); display: inline-block; }
-.sensors b.ok { background: var(--good); } .sensors b.bad { background: var(--late); } .sensors b.wait { background: var(--slight); }
+.sensors { display: flex; gap: 10px; align-items: center; direction: ltr; }
+/* one round chip per sensor: lit = working, dim + breathing = waiting, red + slash = blocked */
+.sens { --c: var(--muted); position: relative; width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; flex: none;
+  background: color-mix(in oklab, var(--c) 16%, color-mix(in oklab, var(--bg) 75%, transparent));
+  border: 2px solid color-mix(in oklab, var(--c) 55%, transparent); color: var(--c); transition: background-color .3s, border-color .3s, color .3s; }
+.sens svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; overflow: visible; }
+.sens .slash { display: none; }
+.sens.ok { --c: var(--good); box-shadow: 0 0 14px color-mix(in oklab, var(--good) 35%, transparent); }
+.sens.wait { --c: var(--slight); animation: sensWait 1.4s ease-in-out infinite; }
+.sens.bad { --c: var(--late); }
+.sens.bad .slash { display: inline; }
+@keyframes sensWait { 50% { opacity: .45; } }
+/* mic level: a ring that fills with loudness */
+.sens .lvl { position: absolute; inset: -2px; width: auto; height: auto; transform: rotate(-90deg); }
+.sens .lvl circle { stroke: var(--c); stroke-width: 3; fill: none; stroke-dasharray: 0 200; transition: stroke-dasharray .12s linear; }
+/* learned gears: one pill per gear */
+.gearpills { display: flex; gap: 3px; align-items: flex-end; height: 46px; padding: 0 4px; }
+.gearpills i { width: 7px; height: 18px; border-radius: 3px; background: color-mix(in oklab, var(--fg) 16%, transparent); }
+.gearpills i.on { background: var(--accent); }
+@media (prefers-reduced-motion: reduce) { .sens.wait { animation: none; opacity: .7; } }
 .dock .btn { min-height: 44px; padding: 8px 16px; background: color-mix(in oklab, var(--bg) 70%, transparent); }
 .chip { border: 1px solid var(--line); border-radius: 99px; padding: 6px 12px; font-size: 13px; background: color-mix(in oklab, var(--bg) 70%, transparent); }
-.demo-tag { position: absolute; top: calc(env(safe-area-inset-top, 0px) + var(--frame-w) + 44px); inset-inline-start: calc(env(safe-area-inset-left, 0px) + var(--frame-w) + 22px); font-size: 12px; letter-spacing: .08em; color: color-mix(in oklab, var(--fg) 45%, transparent); }
+.demo-tag { font-size: 13px; letter-spacing: .08em; color: color-mix(in oklab, var(--fg) 50%, transparent); }
 
 /* ---------- summary ---------- */
 .score-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
@@ -352,19 +375,28 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
 <!-- ===== STAGE (full screen while driving) ===== -->
 <div id="stage" hidden dir="rtl">
   <div id="barbox" aria-hidden="true"><svg id="bar"></svg></div>
-  <div class="demo-tag" id="demo-tag" hidden>הדגמה</div>
+  <div class="topbar">
+      <div class="sensors">
+        <span class="sens" id="s-mic" role="img" aria-label="מיקרופון">
+          <svg class="lvl" viewBox="0 0 50 50"><circle cx="25" cy="25" r="23" pathLength="100"/></svg>
+          <svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M8.5 21h7"/><path class="slash" d="M4 4l16 16"/></svg>
+        </span>
+        <span class="sens" id="s-gps" role="img" aria-label="GPS">
+          <svg viewBox="0 0 24 24"><path d="M12 21s-6.5-6-6.5-11a6.5 6.5 0 0 1 13 0c0 5-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.3"/><path class="slash" d="M4 4l16 16"/></svg>
+        </span>
+        <span class="sens" id="s-mot" role="img" aria-label="חיישן תנועה">
+          <svg viewBox="0 0 24 24"><rect x="8" y="3" width="8" height="18" rx="2"/><path d="M11 18h2M4.5 8.5c-1.2 2.2-1.2 4.8 0 7M19.5 8.5c1.2 2.2 1.2 4.8 0 7"/><path class="slash" d="M4 4l16 16"/></svg>
+        </span>
+        <span class="gearpills" id="s-gears" role="img" aria-label="הילוכים שנלמדו"></span>
+      </div>
+    <div class="demo-tag" id="demo-tag" hidden>הדגמה</div>
+  </div>
   <div class="dash" id="dash">
     <div class="gear" id="d-gear"></div>
     <div class="rpm"><span id="d-rpm">----</span><small>סל"ד</small></div>
     <div class="kmh"><span id="d-kmh">--</span><small>קמ"ש</small></div>
   </div>
   <div class="dock">
-    <div class="sensors">
-      <span><b id="s-mic"></b>קול</span>
-      <span><b id="s-gps"></b>GPS</span>
-      <span><b id="s-mot"></b>תנועה</span>
-      <span class="num" id="s-gears"></span>
-    </div>
     <div class="row" style="flex-wrap:nowrap">
       <button class="chip" id="d-mode">חסכוני</button>
       <button class="btn" id="btn-stop">סיום</button>
@@ -1436,6 +1468,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
   function enterStage(kind) {
     $('stage').hidden = false; $('demo-tag').hidden = kind !== 'demo';
     $('stage').classList.toggle('hide-num', !settings.numbers);
+    pillsKey = ''; ['s-mic', 's-gps', 's-mot'].forEach(id => { $(id).dataset.st = ''; });
     $('d-mode').textContent = settings.mode === 'sport' ? 'ספורטיבי' : 'חסכוני';
     document.body.style.overflow = 'hidden';
     feedback = null; resetColour();
@@ -1477,6 +1510,22 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     return { smooth: 0, ok: 4, harsh: 11 }[ev.smooth] || 0;
   }
   resetColour();
+
+  // one pill per gear; lit once that gear has been learned
+  let pillsKey = '';
+  function drawGearPills(learned) {
+    const key = settings.nGears + ':' + learned.join(',');
+    if (key === pillsKey) return; pillsKey = key;
+    const box = $('s-gears'); box.textContent = '';
+    for (let g = 1; g <= settings.nGears; g++) { const i = document.createElement('i'); if (learned.includes(g)) i.className = 'on'; box.appendChild(i); }
+    box.setAttribute('aria-label', `הילוכים שנלמדו: ${learned.length} מתוך ${settings.nGears}`);
+  }
+  // loudness of the analysed buffer, mapped -60..-10 dBFS → 0..1
+  function levelOf(buf) {
+    let e = 0; for (let i = buf.length - 2048; i < buf.length; i++) e += buf[i] * buf[i];
+    const db = 10 * Math.log10(e / 2048 + 1e-12);
+    return Math.max(0, Math.min(1, (db + 60) / 50));
+  }
 
   function frame() {
     if (!run) return;
@@ -1532,11 +1581,18 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     }
     st.style.transform = tx;
     $('d-gear').textContent = L.gear != null ? L.gear : '';
+    $('dash').classList.toggle('no-gear', L.gear == null);
     $('d-rpm').textContent = L.rpm != null ? fmt(Math.round(L.rpm / 10) * 10) : '----';
     $('d-kmh').textContent = L.kmh != null ? Math.round(L.kmh) : '--';
     const sens = run.sensors();
-    $('s-mic').className = sens.mic; $('s-gps').className = sens.gps; $('s-mot').className = sens.mot;
-    $('s-gears').textContent = L.gearsFound ? `${L.gearsFound}/${settings.nGears}` : '';
+    const WORD = { ok: 'פעיל', wait: 'ממתין', bad: 'חסום' };
+    for (const [id, k, name] of [['s-mic', 'mic', 'מיקרופון'], ['s-gps', 'gps', 'GPS'], ['s-mot', 'mot', 'חיישן תנועה']]) {
+      const el = $(id), st = sens[k] || 'wait';
+      if (el.dataset.st !== st) { el.dataset.st = st; el.className = 'sens ' + st; el.setAttribute('aria-label', `${name}: ${WORD[st]}`); }
+    }
+    const lvl = sens.mic === 'ok' && sens.level != null ? Math.max(0.06, Math.min(1, sens.level)) : 0;
+    $('s-mic').querySelector('.lvl circle').style.strokeDasharray = `${(lvl * 100).toFixed(1)} 200`;
+    drawGearPills(run.coach.gears.gears.map(g => g.n));
     requestAnimationFrame(frame);
   }
 
@@ -1695,7 +1751,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
       const spec = new E.Spectrum(8192), tracker = makeTracker(ctx.sampleRate);
       const coach = makeCoach(gearModel);
       const recorder = settings.record ? startRecording(stream, ctx.sampleRate) : null;
-      let lastAudio = 0, motLast = 0, hp = null;
+      let lastAudio = 0, motLast = 0, hp = null, micLevel = 0;
       // a: acceleration without gravity; gv: gravity vector (or null), used by the coach to drop the vertical part
       const feedMotion = (now, a, gv, src) => {
         if (gv) coach.motion(now, a[0], a[1], a[2], gv[0], gv[1], gv[2]); else coach.motion(now, a[0], a[1], a[2]);
@@ -1719,6 +1775,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
       let saveT = 0;
       const timer = setInterval(() => {
         an.getFloatTimeDomainData(buf);
+        micLevel = levelOf(buf);
         const now = performance.now() / 1000;
         while (gpsQueue.length) { const q = gpsQueue.shift(); coach.gpsFix(q[0], q[1]); if (recorder) recorder.gps(q); }
         const tc = now - 4096 / ctx.sampleRate;
@@ -1735,7 +1792,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
         sensors: () => {
           const now = performance.now() / 1000;
           return {
-            mic: now - lastAudio < 1 ? 'ok' : 'wait',
+            mic: now - lastAudio < 1 ? 'ok' : 'wait', level: micLevel,
             gps: gps.denied ? 'bad' : now - gps.last < 3 ? 'ok' : 'wait',
             mot: mot.value === 'denied' ? 'bad' : now - motLast < 1 ? 'ok' : 'wait'
           };
@@ -1763,7 +1820,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     const spec = new E.Spectrum(n), tracker = makeTracker(sr, true);
     const buf = new Float32Array(n), block = new Float32Array(sub);
     const lagQ = [];
-    let simT = 0, nextGps = 1, nextMot = 0, lastAudio = 0;
+    let simT = 0, nextGps = 1, nextMot = 0, lastAudio = 0, demoLevel = 0;
     const t0 = performance.now() / 1000;
     let wake = null;
     try { if (navigator.wakeLock) navigator.wakeLock.request('screen').then(w => { wake = w; }).catch(() => {}); } catch (e) { /* none */ }
@@ -1784,6 +1841,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
         }
       }
       if (simT < n / sr) return;
+      demoLevel = levelOf(buf);
       const tc = simT - (n / 2) / sr;
       const priors = coach.gears.complete ? coach.gears.predict(coach.speedAt(tc)) : null;
       const r = tracker.update(spec.compute(buf), tc, priors);
@@ -1794,7 +1852,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     run = {
       kind: 'demo', coach,
       clock: () => simT - (n / 2) / sr,
-      sensors: () => ({ mic: simT - lastAudio < 1 ? 'ok' : 'wait', gps: 'ok', mot: 'ok' }),
+      sensors: () => ({ mic: simT - lastAudio < 1 ? 'ok' : 'wait', level: demoLevel, gps: 'ok', mot: 'ok' }),
       stop: () => { clearInterval(timer); if (wake) wake.release().catch(() => {}); }
     };
     enterStage('demo');
