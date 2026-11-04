@@ -24,7 +24,12 @@ function decode(b64, mime) {
   fs.rmSync(path.dirname(tmp), { recursive: true, force: true });
   return new Float32Array(out.buffer, out.byteOffset, out.length / 4);
 }
-const pcm = decode(rec.audio.base64, rec.audio.mime || '');
+// v2 files keep the audio in segments, each with its start time on the sensor clock; gaps stay silent
+const segs = rec.audio.segments || [{ t0: 0, base64: rec.audio.base64 }];
+const parts = segs.map(sg => ({ t0: sg.t0 || 0, pcm: decode(sg.base64, rec.audio.mime || '') }));
+const pcm = new Float32Array(Math.max(...parts.map(p => Math.round(p.t0 * SR) + p.pcm.length)));
+for (const p of parts) pcm.set(p.pcm, Math.round(p.t0 * SR));
+if (parts.length > 1) console.log(`segments    ${parts.map(p => `${p.t0.toFixed(1)}s+${(p.pcm.length / SR).toFixed(0)}s`).join(', ')}`);
 
 const settings = {};
 if (opt('--mode')) settings.mode = opt('--mode');

@@ -285,10 +285,13 @@
     return { grade: 'late', note: th.mode === 'sport' ? 'נגעת בקו האדום' : 'סובבת את המנוע יותר מדי' };
   }
 
+  // ספים על ה-jerk שמעל רעש הכביש (m/s³), אחרי מסנן דו-שלבי של 0.15 שנ'. נקבעו זמנית מהקלטה אמיתית ראשונה
+  // (iPhone במעמד, 4.11.2026): ברעש כביש רגיל 1–4, ובאירועים 0–9 מעליו. עדיין אין סימון של מה הרגיש קופצני באמת.
+  const SMOOTH_TH = { ok: 2, harsh: 4.5 };
   function smoothLabel(j) {
     if (j == null) return null;
-    if (j < 5) return 'smooth';
-    if (j < 10) return 'ok';
+    if (j < SMOOTH_TH.ok) return 'smooth';
+    if (j < SMOOTH_TH.harsh) return 'ok';
     return 'harsh';
   }
   // בלי מד תאוצה: חלקות לפי התאמת הסל"ד ומשך ההעברה
@@ -317,7 +320,7 @@
       this.jerk = []; this.lp = null; this.lastMotion = null; this.gv = null;
       // ציר הנסיעה בתוך מישור הטלפון: S = Σ(תאוצת GPS × וקטור התאוצה הממוצע), W = Σ(תאוצת GPS²). PCA כגיבוי בלי GPS.
       this.accLog = []; this.axS = [0, 0, 0]; this.axW = 0; this.cov = null; this.pc = null; this.axisMode = 'all';
-      this.fastA = null; this.fastJ = 0; this.fastBase = null; this.fastT = null; this.fastSrc = null;
+      this.fastA = null; this.fastA1 = null; this.fastJ = 0; this.fastBase = null; this.fastT = null; this.fastSrc = null; this._baseT = null; this._base = 0;
       this.state = 'track'; this.drop = null; this.refractUntil = 0;
       this.events = []; this.pending = [];
       this.lowSince = null; this.trace = []; this.lastTraceT = -1e9; this.startT = null;
@@ -403,14 +406,16 @@
       }
       // רק הרכיב לאורך ציר הנסיעה (אם נלמד), כדי שפניות לא ייספרו כטלטלה
       const f = horiz && this.s.jerkAxis !== false ? this.forwardAxis() : null, mode = f ? (this.axW > 0 && this.hasGps ? 'gps' : 'pca') : 'all';
-      if (mode !== this.axisMode) { this.axisMode = mode; this.lp = null; }
+      if (mode !== this.axisMode) { this.axisMode = mode; this.lp = null; this.lp2 = null; }
       const v = f ? [ax * f[0] + ay * f[1] + az * f[2], 0, 0] : [ax, ay, az];
-      if (!this.lp) { this.lp = v; this.lastMotion = t; return; }
+      if (!this.lp) { this.lp = v; this.lp2 = v; this.lastMotion = t; return; }
       const dt = t - this.lastMotion; if (dt <= 0) return;
-      const a = Math.min(1, dt / 0.12);
-      const p = this.lp, nx = p[0] + a * (v[0] - p[0]), ny = p[1] + a * (v[1] - p[1]), nz = p[2] + a * (v[2] - p[2]);
-      const j = Math.hypot(nx - p[0], ny - p[1], nz - p[2]) / dt;
-      this.lp = [nx, ny, nz]; this.lastMotion = t;
+      // מסנן דו-שלבי (2 × 0.15 שנ'): מסנן חד-שלבי השאיר את הרטט של הטלפון במעמד, וברעש כביש רגיל ה-jerk יצא 5–16
+      const a = Math.min(1, dt / 0.15);
+      const p1 = this.lp, q = p1.map((pv, i) => pv + a * (v[i] - pv));
+      const p2 = this.lp2 || p1, n2 = p2.map((pv, i) => pv + a * (q[i] - pv));
+      const j = Math.hypot(n2[0] - p2[0], n2[1] - p2[1], n2[2] - p2[2]) / dt;
+      this.lp = q; this.lp2 = n2; this.lastMotion = t;
       this.jerk.push({ t, j });
       while (this.jerk.length && this.jerk[0].t < t - 15) this.jerk.shift();
     }
@@ -420,7 +425,10 @@
     fastPath(t, ax, ay, az) {
       const gn = Math.hypot(this.gv[0], this.gv[1], this.gv[2]), u = this.gv.map(v => v / gn);
       const flat = (v) => { const d = v[0] * u[0] + v[1] * u[1] + v[2] * u[2], h = [v[0] - d * u[0], v[1] - d * u[1], v[2] - d * u[2]], n = Math.hypot(h[0], h[1], h[2]); return n > 0.3 ? h.map(q => q / n) : null; };
-      const guess = flat([0, 0, -1]) || flat([0, 1, 0]);
+      // ב-iOS הסימנים של devicemotion הפוכים לתקן: בטלפון זקוף הכבידה יוצאת y≈-9.8 במקום +9.8. במעמד הטלפון כמעט תמיד
+      // זקוף, אז הסימן של y בכבידה אומר באיזו מוסכמה אנחנו. 'קדימה' = הגב של הטלפון (-z), או הקצה העליון אם הוא שוכב.
+      const conv = this.gv[1] < -2 ? -1 : 1;
+      const guess = flat([0, 0, -conv]) || flat([0, conv, 0]);
       const gpsAx = this.hasGps ? this.forwardAxis() : null;
       let fa = gpsAx;
       if (!fa && this.pc && this.cov && this.cov.w > 0.15) {
@@ -432,10 +440,11 @@
       const dt = this.fastT != null ? t - this.fastT : 0; this.fastT = t;
       if (!fa) return;
       const s = ax * fa[0] + ay * fa[1] + az * fa[2];
-      if (this.fastA == null || dt > 0.5 || src !== this.fastSrc) { this.fastA = s; this.fastJ = 0; this.fastSrc = src; return; }
+      if (this.fastA == null || dt > 0.5 || src !== this.fastSrc) { this.fastA = this.fastA1 = s; this.fastJ = 0; this.fastSrc = src; return; }
       if (dt <= 0) return;
-      const k = Math.min(1, dt / 0.04), n = this.fastA + k * (s - this.fastA), jf = Math.abs(n - this.fastA) / dt;
-      this.fastA = n; this.fastJ = jf;
+      // דו-שלבי 2 × 50ms: רעד של כ-2.8° במקום 3.8° ברטט של מעמד אמיתי, בעיכוב של כ-67ms
+      const k = Math.min(1, dt / 0.05), n1 = this.fastA1 + k * (s - this.fastA1), n = this.fastA + k * (n1 - this.fastA), jf = Math.abs(n - this.fastA) / dt;
+      this.fastA1 = n1; this.fastA = n; this.fastJ = jf;
       this.fastBase = this.fastBase == null ? jf : this.fastBase + Math.min(1, dt / 5) * (jf - this.fastBase);  // ~5 שנ'
     }
     // כל זוג דגימות GPS: תאוצה לאורך הדרך (Δv/Δt) מול הממוצע של וקטור התאוצה האופקי באותו פרק זמן (אחרי תיקון ההשהיה).
@@ -680,13 +689,22 @@
     // לכוס הקפה: הערכים מהמסלול המהיר (ראו fastPath)
     motionState(t) {
       if (!this.hasMotion || this.fastT == null) return null;
-      return { a: this.fastA != null ? this.fastA : null, j: this.fastJ || 0, base: this.fastBase || 0, axis: this.fastSrc || null, fresh: t - this.fastT < 0.5 };
+      // jHarsh: ה-jerk של הציון מעל רעש הכביש, כדי שהכוס תישפך רק כשההעברה באמת מקבלת 'קפיצה'
+      const last = this.jerk[this.jerk.length - 1];
+      if (this._baseT == null || t - this._baseT > 0.5) { this._baseT = t; this._base = this.jerkBaseline(t); }
+      return { a: this.fastA != null ? this.fastA : null, j: this.fastJ || 0, base: this.fastBase || 0, axis: this.fastSrc || null,
+        // jHarsh stays 0 until the road level is known
+        jHarsh: last && this._base > 0 && t - last.t < 0.3 ? Math.max(0, last.j - this._base) / SMOOTH_TH.harsh : 0, fresh: t - this.fastT < 0.5 };
     }
 
     // --- מצב חי לתצוגה ---
     live(t) {
       const h = this.hist, last = h[h.length - 1];
-      const rpm = last && t - last.t < 0.6 ? last.rpm : null;
+      let rpm = last && t - last.t < 0.6 ? last.rpm : null;
+      const kmh0 = this.speedAt(t);
+      // בעמידה סל"ד הסרק (כ-27Hz) נמוך מדי למיקרופון של האייפון, וה-tracker תופס צליל אחר (בנסיעה אמיתית יצא ~3,700 בעמידה).
+      // לכן בעמידה לא מציגים סל"ד ולא מתריעים על מנוע חנוק.
+      if (kmh0 != null && kmh0 < 2) rpm = null;
       const kmh = this.speedAt(t);
       const gearObj = rpm && kmh != null ? this.gears.classify(rpm, kmh) : null;
       const gear = gearObj ? gearObj.n : null;
@@ -719,9 +737,11 @@
   // ---------- הדמיית נסיעה (למצב הדגמה ולבדיקות) ----------
   // כל העברה מקבלת "סגנון נהג": חלק / סביר / קופצני (שחרור גז ושחרור קלאץ').
   const STYLES = {
-    smooth: { liftTau: 0.22, dropBelow: 60, engage: 0.28, kick: 0.15 },
-    ok: { liftTau: 0.1, dropBelow: 220, engage: 0.14, kick: 0.45 },
-    harsh: { liftTau: 0.03, dropBelow: 600, engage: 0.05, kick: 1.1 }
+    // accTau: כמה מהר הנהג מחזיר את הגז אחרי ההעברה. כוילו כך שבמסנן הדו-שלבי ה-jerk ייפול בספים של
+    // הנסיעה האמיתית (חלקה < 2, טלטלה < 4.5, קפיצה מעל)
+    smooth: { liftTau: 0.45, dropBelow: 60, engage: 0.28, kick: 0.05, accTau: 0.9 },
+    ok: { liftTau: 0.18, dropBelow: 220, engage: 0.14, kick: 0.35, accTau: 0.35 },
+    harsh: { liftTau: 0.04, dropBelow: 600, engage: 0.05, kick: 1.1, accTau: 0.08 }
   };
   const STYLE_ORDER = ['smooth', 'harsh', 'ok', 'smooth', 'ok', 'smooth', 'harsh'];
   // זינוק: כמה מהר הקלאץ' משתחרר (tau), כמה הרכב קופץ, והאם המנוע כמעט נכבה
@@ -810,7 +830,7 @@
         this.kmh += this.accel * 3.6 * dt;
         const target = this.kmh * R[this.gear] - st.dropBelow;
         this.rpm = target + (this.clutchStart - target) * Math.exp(-this.phaseT / 0.18);
-        if (this.phaseT >= 0.5) { this.phase = 'engage'; this.phaseT = 0; this.engageFrom = this.rpm; this.gear++; this.tau = st.engage; }
+        if (this.phaseT >= 0.5) { this.phase = 'engage'; this.phaseT = 0; this.engageFrom = this.rpm; this.gear++; this.tau = st.accTau; }
       } else if (ph === 'engage') {
         const st = STYLES[this.style];
         const target = this.kmh * R[this.gear - 1];
@@ -822,7 +842,7 @@
           const mismatch = Math.abs(target - this.engageFrom) / target;
           this.jolt = st.kick + 3 * mismatch; this.joltT = this.t;
           this.shifts.push({ t: this.shiftFrom.t, from: this.shiftFrom.gear, to: this.gear, before: this.shiftFrom.rpm, after: target, style: this.style });
-          this.phase = 'accel'; this.phaseT = 0; this.tau = 0.25;
+          this.phase = 'accel'; this.phaseT = 0; this.tau = Math.max(0.25, st.accTau);
         }
       } else if (ph === 'cruise') {
         this.accTarget = 0; this.load = 0.35; this.rpm = this.kmh * R[this.gear - 1];
@@ -980,7 +1000,7 @@
     return best ? { offset: best.offset, agree: best.agree, n: best.n } : { offset: 0, agree: null, n: 0 };
   }
 
-  const api = { makeFFT, Spectrum, RpmTracker, GearModel, Coach, DriveSim, EngineSynth, Replayer, alignOffset, thresholds, gradeShift, GRADES };
+  const api = { SMOOTH_TH, makeFFT, Spectrum, RpmTracker, GearModel, Coach, DriveSim, EngineSynth, Replayer, alignOffset, thresholds, gradeShift, GRADES };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.ShiftEngine = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
