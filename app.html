@@ -243,6 +243,21 @@ label.btn { position: relative; }
 .feel button[aria-pressed="true"][data-k="smooth"] { background: var(--good); color: #071015; border-color: transparent; }
 .feel button[aria-pressed="true"][data-k="ok"] { background: var(--slight); color: #071015; border-color: transparent; }
 .feel button[aria-pressed="true"][data-k="harsh"] { background: var(--late); color: #071015; border-color: transparent; }
+.tile.felt-none { opacity: .35; border-style: dashed !important; }
+.arch { display: flex; flex-direction: column; gap: 8px; padding: 10px 0; border-top: 1px solid var(--line); }
+.arch:first-child { border-top: 0; }
+.arch > div:first-child { display: flex; flex-direction: column; gap: 2px; }
+.arch.cur b { color: var(--accent); }
+.arch .btn { min-height: 40px; padding: 6px 14px; flex: 1 1 auto; }
+/* fast tagging: one change at a time, big buttons */
+#tagger { position: fixed; inset: 0; z-index: 30; background: var(--bg); overflow: auto; padding: calc(env(safe-area-inset-top, 0px) + 16px) max(16px, env(safe-area-inset-right, 0px)) calc(env(safe-area-inset-bottom, 0px) + 16px) max(16px, env(safe-area-inset-left, 0px)); }
+.tg-wrap { max-width: 520px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
+.tg-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.tg-btns { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.tg-btns button { min-height: 64px; border-radius: 16px; border: 0; font: inherit; font-size: 18px; font-weight: 700; color: #071015; }
+.tg-btns .k-smooth { background: var(--good); } .tg-btns .k-ok { background: var(--slight); } .tg-btns .k-harsh { background: var(--late); }
+.tg-more { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.tg-more button { min-height: 48px; }
 .tile.felt::after { content: ""; position: absolute; top: 3px; inset-inline-end: 3px; width: 7px; height: 7px; border-radius: 50%; background: var(--fg); }
 .jchart { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--line); padding-top: 10px; }
 .jchart svg { display: block; }
@@ -403,7 +418,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
         <div class="switch"><label for="in-cup">כוס קפה שמראה את התאוצה בזמן נסיעה</label><input type="checkbox" id="in-cup" checked></div>
         <div class="switch"><label for="in-calib">נסיעת כיול עם נוסע: שלושה כפתורים לסימון כל העברה (מפעיל גם הקלטה)</label><input type="checkbox" id="in-calib"></div>
         <div class="switch"><label for="in-record">לשמור הקלטה של כל נסיעה (קול, GPS ותאוצה), בשביל כיול</label><input type="checkbox" id="in-record"></div>
-        <p class="small muted">ההקלטה כוללת את המיקום שלך. בסוף הנסיעה יופיע במסך הסיכום כפתור לשיתוף הקובץ. הקובץ לא נשמר בטלפון: אם תסגור את הדף לפני שתשתף, הוא יאבד.</p>
+        <p class="small muted">ההקלטה שומרת את המיקום רק מעוגל (בערך 100 מ'), וזה מספיק ללמידה. 8 הנסיעות האחרונות נשמרות בטלפון, ומופיעות בתחתית מסך הסיכום. משם אפשר לסמן אותן, לשתף או למחוק.</p>
       </div>
       <div class="card">
         <h3>הילוכים שנלמדו</h3>
@@ -446,6 +461,19 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     <p class="small muted">סיבוב (מטוטלת במעמד): <span class="num"><span id="mt-rot">–</span> °/s</span>. בנסיעה הראשונה שלך הרעד בעמידה היה <span class="num">1.65</span>.</p>
     <div class="mt-tries" id="mt-tries"></div>
     <div class="row"><button class="btn primary" id="mt-save">שמור את המיקום הזה</button><button class="btn" id="mt-close">סגור</button></div>
+  </div>
+</div>
+
+<!-- ===== FAST TAGGING: one change at a time ===== -->
+<div id="tagger" hidden dir="rtl">
+  <div class="tg-wrap">
+    <div class="tg-head"><h2 id="tg-title">העברה</h2><span class="small muted num" id="tg-count"></span></div>
+    <p class="small muted" id="tg-sub"></p>
+    <div id="tg-chart"></div>
+    <p><strong>איך זה הרגיש לך?</strong></p>
+    <div class="tg-btns"><button class="k-smooth" data-k="smooth">חלקה</button><button class="k-ok" data-k="ok">טלטלה</button><button class="k-harsh" data-k="harsh">קפיצה</button></div>
+    <div class="tg-more"><button class="btn" data-k="none">לא הייתה כאן העברה</button><button class="btn" data-k="skip">לא זוכר, דלג</button></div>
+    <div class="row"><button class="btn" id="tg-back">הקודמת</button><button class="btn" id="tg-close">סיום</button></div>
   </div>
 </div>
 
@@ -509,7 +537,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     get(k, d) { try { const v = localStorage.getItem('shiftcoach.' + k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
     set(k, v) { try { localStorage.setItem('shiftcoach.' + k, JSON.stringify(v)); } catch (e) { /* storage blocked */ } }
   };
-  const DEFAULTS = { mode: 'eco', ecoTarget: 2500, redline: 6500, nGears: 5, cylinders: 4, rpmScale: 1, sound: false, numbers: true, record: false, cup: true, showRpm: false, calib: false };
+  const DEFAULTS = { mode: 'eco', ecoTarget: 2500, redline: 6500, nGears: 5, cylinders: 4, rpmScale: 1, sound: false, numbers: true, record: true, cup: true, showRpm: false, calib: false };
   let settings = Object.assign({}, DEFAULTS, LS.get('settings', {}));
   let gearModel = E.GearModel.fromJSON(LS.get('gears', null), settings.nGears);
   let session = LS.get('session', null);
@@ -611,11 +639,12 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
   function recordTag(sess, e) {
     const L = learnStore(), key = `${sess.date}|${e.t}`;
     L.samples = L.samples.filter(q => q.key !== key);
-    if (e.feel && e.smoothSrc === 'motion' && e.jerk != null)
+    if (['smooth', 'ok', 'harsh'].includes(e.feel) && e.smoothSrc === 'motion' && e.jerk != null)  // 'none' (no change there) is not a smoothness sample
       L.samples.push({ key, x: Math.max(0, e.jerk - (e.jerkBase || 0)), feel: e.feel, shake: sess.mountShake, kind: e.kind || 'up', engine: e.smooth });
     L.samples = L.samples.slice(-300);
     L.th = E.learnThresholds(L.samples, E.SMOOTH_TH); L.updated = new Date().toISOString();
     LS.set('learn', L);
+    if (recording && recording.session === sess) saveArchive();
   }
   function makeCoach(gm) {
     const c = new E.Coach(Object.assign({}, settings, { smoothTh: learnedTh() || undefined }), gm);
@@ -829,7 +858,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     if (r.kind === 'live') saveGears();
     if (r.recorder) {
       recording = { state: 'pending' };
-      r.recorder.finish(session).then(({ rec, name, t0 }) => { recording = { state: 'ready', rec, name, t0, session }; if (currentView === 'summary') renderSummary(); })
+      r.recorder.finish(session, r.coach).then(({ rec, name, t0 }) => { recording = { state: 'ready', rec, name, t0, session }; saveArchive(); if (currentView === 'summary') renderSummary(); })
         .catch(err => { recording = { state: 'error', msg: String(err && err.message || err) }; if (currentView === 'summary') renderSummary(); });
     }
     show('summary');
@@ -854,13 +883,14 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     const step = Math.max(1, Math.ceil(tr.length / 2400));
     return {
       source, date: new Date().toISOString(), th: coach.th, nGears: settings.nGears,
-      events: coach.events.map(e => ({ kind: e.kind || 'up', t: e.t, tAbs: e.t + (coach.startT || 0), from: e.from, to: e.to, before: e.before, after: e.after, grade: e.grade, smooth: e.smooth, jerk: e.jerk, jerkBase: e.jerkBase, th: e.th, vdv: e.vdv, vdvBase: e.vdvBase, axis: e.axis, trace: e.trace, revDrop: e.revDrop, duration: e.duration, smoothSrc: e.smoothSrc })),
+      events: coach.events.map(e => ({ kind: e.kind || 'up', t: e.t, tAbs: e.t + (coach.startT || 0), from: e.from, to: e.to, before: e.before, after: e.after, grade: e.grade, smooth: e.smooth, jerk: e.jerk, jerkBase: e.jerkBase, th: e.th, vdv: e.vdv, vdvBase: e.vdvBase, axis: e.axis, trace: e.trace, revDrop: e.revDrop, duration: e.duration, smoothSrc: e.smoothSrc, kmh: e.kmh })),
       trace: tr.filter((_, i) => i % step === 0).map(p => [Math.round(p.t * 10) / 10, p.rpm]),
       mountShake: coach.mountShake() != null ? Math.round(coach.mountShake() * 100) / 100 : null, remounts: coach.remounts || 0,
       summary: coach.summary()
     };
   }
 
+  const BUILD = '__BUILD__';
   // ---------- DRIVE RECORDING (for calibration): compressed audio + sensor log in one JSON file ----------
   // Times in the file are seconds since the recorder started. The audio may start a little off that clock;
   // tests/replay.js finds the exact offset by matching the rpm logged live against the rpm from the audio.
@@ -913,14 +943,15 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     const r3 = (v) => Math.round(v * 1000) / 1000;
     const b64of = (blob) => new Promise((res, rej) => { const fr = new FileReader(); fr.onerror = () => rej(fr.error); fr.onload = () => res(String(fr.result).split(',')[1] || ''); fr.readAsDataURL(blob); });
     return {
-      gps(q) { gpsLog.push([r3(rel(q[0])), Math.round(q[1] * 100) / 100, q[2] != null ? +q[2].toFixed(6) : null, q[3] != null ? +q[3].toFixed(6) : null, q[4] != null ? Math.round(q[4]) : null]); },
+      // [t, kmh, lat, lon, accuracy m, heading °, altitude m, speed from GPS (1) or from positions (0)]; position rounded to ~100 m
+      gps(q) { const n = (v, d) => v != null && isFinite(v) ? +(+v).toFixed(d) : null; gpsLog.push([r3(rel(q[0])), Math.round(q[1] * 100) / 100, n(q[2], 3), n(q[3], 3), n(q[4], 0), n(q[5], 0), n(q[6], 0), q[7] != null ? q[7] : null]); },
       // [t, ax, ay, az] or [t, ax, ay, az, gx, gy, gz]
       rot(t, al, be, ga) { rotLog.push([r3(rel(t)), Math.round(al * 10) / 10, Math.round(be * 10) / 10, Math.round(ga * 10) / 10]); },
       get t0() { return t0; },
       motion(t, a, gv, src) { motSrc = src; motLog.push([r3(rel(t)), r3(a[0]), r3(a[1]), r3(a[2])].concat(gv ? gv.map(v => Math.round(v * 100) / 100) : [])); },
-      frame(tc, rpm) { live.push([r3(rel(tc)), rpm ? Math.round(rpm) : null]); },
+      frame(tc, rpm, conf) { live.push([r3(rel(tc)), rpm ? Math.round(rpm) : null, conf != null ? Math.round(conf * 10) / 10 : null]); },
       label(t, k) { labels.push([r3(rel(t)), k]); },
-      finish(sess) {
+      finish(sess, coach) {
         stopping = true; clearInterval(watch);
         try { cur.mr.state !== 'inactive' ? cur.mr.stop() : cur.mr.onstop(); } catch (e) { /* already stopped */ }
         return Promise.all(segs.map(sg => sg.done)).then(() => {
@@ -932,6 +963,10 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
                 format: 'shift-coach-recording', v: 2, startedAt, userAgent: navigator.userAgent,
                 settings: settingsAtStart, sampleRate, fftN: 8192, motionSrc: motSrc, gearsAtStart,
                 gps: gpsLog, motion: motLog, rot: rotLog, live, labels, events: sess ? sess.events : [],
+                // what the engine considered (for learning a detector) and the state it learned, for exact re-runs
+                candidates: coach ? coach.candidates.map(c => Object.assign({}, c, { t: r3(c.tAbs - t0), tAbs: undefined })) : [],
+                meta: coach ? { build: BUILD, lag: coach.lag, mountShake: coach.mountShake(), remounts: coach.remounts || 0, axisQuality: Math.round(coach.axisQuality() * 100) / 100,
+                  thresholds: coach.smoothThresholds(), gearsAtEnd: coach.gears.toJSON(), learn: (learnStore().th || null) } : { build: BUILD },
                 audio: { mime: parts[0].mime, bytes: segments.reduce((a, x) => a + x.bytes, 0), segments }
               };
               const d = new Date(startedAt), pad = (x) => String(x).padStart(2, '0');
@@ -942,13 +977,73 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
       }
     };
   }
+  // ---------- DRIVE ARCHIVE: the last 8 recordings stay on the phone (IndexedDB), so none is lost and any can be
+  // tagged and shared later. If storage runs out, the oldest drive is dropped and the page says so.
+  const ARCHIVE_MAX = 8;
+  const Arch = (() => {
+    let dbp = null;
+    const open = () => dbp || (dbp = new Promise((res, rej) => {
+      try { const q = indexedDB.open('shiftcoach', 1); q.onupgradeneeded = () => q.result.createObjectStore('drives', { keyPath: 'id' }); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); }
+      catch (e) { rej(e); }
+    }));
+    const tx = (mode, fn) => open().then(db => new Promise((res, rej) => { const t = db.transaction('drives', mode), st = t.objectStore('drives'); const out = fn(st); t.oncomplete = () => res(out && out.result !== undefined ? out.result : out); t.onerror = () => rej(t.error); t.onabort = () => rej(t.error); }));
+    const all = () => open().then(db => new Promise((res, rej) => { const q = db.transaction('drives').objectStore('drives').getAll(); q.onsuccess = () => res((q.result || []).sort((a, b) => b.date.localeCompare(a.date))); q.onerror = () => rej(q.error); }));
+    const del = (id) => tx('readwrite', st => st.delete(id));
+    const get = (id) => open().then(db => new Promise((res, rej) => { const q = db.transaction('drives').objectStore('drives').get(id); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); }));
+    const put = (entry, tries = 3) => tx('readwrite', st => st.put(entry))
+      .then(() => all()).then(list => Promise.all(list.slice(ARCHIVE_MAX).map(x => del(x.id))).then(() => list.length > ARCHIVE_MAX))
+      .catch(err => {
+        if (tries > 0 && err && /quota/i.test(err.name + ' ' + err.message)) return all().then(list => list.length ? del(list[list.length - 1].id).then(() => { notice('האחסון בטלפון מלא, אז הנסיעה השמורה הישנה ביותר נמחקה.'); return put(entry, tries - 1); }) : Promise.reject(err));
+        return Promise.reject(err);
+      });
+    return { all, get, put, del };
+  })();
+  function archiveEntry(rc) {
+    const ev = rc.session && rc.session.events || [];
+    return { id: rc.rec.startedAt, date: rc.rec.startedAt, name: rc.name, t0: rc.t0, rec: rc.rec, session: rc.session,
+      dur: rc.rec.live.length ? rc.rec.live[rc.rec.live.length - 1][0] : 0, nEvents: ev.length, nTagged: ev.filter(e => e.feel).length };
+  }
+  // save the current recording (again) with its latest tags
+  let archTimer = null;
+  function saveArchive() {
+    if (!recording || recording.state !== 'ready') return;
+    clearTimeout(archTimer);
+    archTimer = setTimeout(() => { Arch.put(archiveEntry(recording)).then(() => { recording.archived = true; if (currentView === 'summary') renderArchive(); }).catch(() => { recording.archived = false; }); }, 300);
+  }
+  function openArchived(id) {
+    Arch.get(id).then(x => {
+      if (!x) return;
+      session = x.session; LS.set('session', session);
+      recording = { state: 'ready', rec: x.rec, name: x.name, t0: x.t0, session, archived: true };
+      selected = null; renderSummary(); window.scrollTo(0, 0);
+    });
+  }
+  function renderArchive() {
+    const box = $('archive-list'); if (!box) return;
+    Arch.all().then(list => {
+      if (!list.length) { box.innerHTML = '<p class="small muted">עוד אין נסיעות שמורות. כל נסיעה עם הקלטה נשמרת כאן אוטומטית.</p>'; return; }
+      box.innerHTML = list.map(x => { const d = new Date(x.date); const cur = recording && recording.rec && recording.rec.startedAt === x.id;
+        return `<div class="arch${cur ? ' cur' : ''}" data-id="${x.id}"><div><b class="num">${d.toLocaleDateString('he-IL')} ${d.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}</b><span class="small muted"><span class="num">${Math.round(x.dur / 60)}</span> דק' · <span class="num">${x.nEvents}</span> העברות · סומנו <span class="num">${x.nTagged}</span></span></div>
+          <div class="row"><button class="btn" data-a="open">${cur ? 'פתוחה' : 'פתח'}</button><button class="btn" data-a="share">שתף</button><button class="btn" data-a="del">מחק</button></div></div>`; }).join('');
+    }).catch(() => { box.innerHTML = '<p class="small muted">האחסון בטלפון לא זמין בדפדפן הזה, אז הנסיעות לא נשמרות. אפשר עדיין לשתף כל נסיעה בסופה.</p>'; });
+  }
+  document.addEventListener('click', (e) => {
+    const b = e.target.closest('#archive-list button'); if (!b) return;
+    const id = b.closest('.arch').dataset.id, a = b.dataset.a;
+    if (a === 'open') openArchived(id);
+    else if (a === 'share') Arch.get(id).then(x => { if (x) shareRecording(fileFrom(x)); });
+    else if (a === 'del') { if (b.dataset.sure) Arch.del(id).then(() => { if (recording && recording.rec && recording.rec.startedAt === id) recording = null; renderSummary(); }); else { b.dataset.sure = '1'; b.textContent = 'בטוח?'; } }
+  });
+
   // the file is built when sharing, so the driver's after-the-drive tags (how each change felt) go in too:
   // rec.feel = [[t on the recording clock, 'smooth'|'ok'|'harsh', kind, engine grade]]
-  function recordingFile() {
-    const rc = recording, rec = rc.rec;
+  // 'none' = the driver says there was no gear change there (a false event)
+  function fileFrom(rc) {
+    const rec = rc.rec;
     rec.feel = (rc.session && rc.session.events || []).filter(e => e.feel && e.tAbs != null).map(e => [Math.round((e.tAbs - rc.t0) * 1000) / 1000, e.feel, e.kind || 'up', e.smooth || null]);
     return new File([JSON.stringify(rec)], rc.name, { type: 'application/json' });
   }
+  function recordingFile() { return fileFrom(recording); }
   function shareRecording(file) {
     const data = { files: [file], title: 'הקלטת נסיעה' };
     if (navigator.canShare && navigator.canShare(data)) {
@@ -1034,7 +1129,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
           v = dt > 0.3 ? dist / dt : null;
         }
         gps.prev = { lat: pos.coords.latitude, lon: pos.coords.longitude, t };
-        if (v >= 0) { gps.last = now; gpsQueue.push([t, v * 3.6, pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy]); }
+        if (v >= 0) { gps.last = now; gpsQueue.push([t, v * 3.6, pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy, pos.coords.heading, pos.coords.altitude, pos.coords.speed >= 0 ? 1 : 0]); }
       }, () => { gps.denied = true; }, { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 });
     } catch (e) { gps.denied = true; }
     let wake = null;
@@ -1090,7 +1185,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
         const r = tracker.update(spec.compute(buf), tc, priors);
         if (r.rpm) lastAudio = now;
         coach.audio(tc, r);
-        if (recorder) recorder.frame(tc, r.rpm);
+        if (recorder) recorder.frame(tc, r.rpm, r.conf);
         if (now - saveT > 20) { saveT = now; saveGears(); }
       }, 83);
       run = {
@@ -1255,6 +1350,33 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
 
   // ---------- SUMMARY ----------
   let selected = null;
+  // ---------- fast tagging ----------
+  // Walks through the drive's changes, untagged first, and tags each with one tap. Each tag feeds the learning
+  // (recordTag) and the archive. 'none' marks a false event (a negative example for a future detector).
+  let tg = null;
+  function openTagger() {
+    if (!session || !session.events.length) return;
+    const order = session.events.map((e, i) => i).sort((a, b) => (session.events[a].feel ? 1 : 0) - (session.events[b].feel ? 1 : 0) || a - b);
+    tg = { order, pos: 0 }; $('tagger').hidden = false; document.body.style.overflow = 'hidden'; drawTagger();
+  }
+  function drawTagger() {
+    const e = session.events[tg.order[tg.pos]], mm = Math.floor(e.t / 60), ss = String(Math.floor(e.t % 60)).padStart(2, '0');
+    $('tg-title').textContent = `${KIND_WORD[e.kind || 'up']}${e.from && e.to ? ` ${e.from}→${e.to}` : ''}`;
+    $('tg-count').textContent = `${tg.pos + 1} / ${tg.order.length}`;
+    $('tg-sub').innerHTML = `בדקה <span class="num">${mm}:${ss}</span> של הנסיעה${e.kmh != null ? `, ב-<span class="num">${e.kmh}</span> קמ"ש` : ''}. המנוע אמר: <strong>${e.smooth ? SMOOTH_WORD[e.smooth] : 'לא ידוע'}</strong>.${e.feel ? ` סימנת: <strong>${e.feel === 'none' ? 'לא הייתה העברה' : SMOOTH_WORD[e.feel]}</strong>.` : ''}`;
+    const ch = $('tg-chart'); ch.textContent = '';
+    if (e.trace && e.smoothSrc === 'motion' && e.trace.j && e.trace.j.length > 5) ch.appendChild(jerkChart(e));
+  }
+  $('tagger').addEventListener('click', (x) => {
+    const b = x.target.closest('button[data-k]'); if (!b || !tg) return;
+    const e = session.events[tg.order[tg.pos]];
+    if (b.dataset.k !== 'skip') { e.feel = b.dataset.k; LS.set('session', session); recordTag(session, e); }
+    if (tg.pos < tg.order.length - 1) { tg.pos++; drawTagger(); } else closeTagger();
+  });
+  $('tg-back').addEventListener('click', () => { if (tg && tg.pos > 0) { tg.pos--; drawTagger(); } });
+  function closeTagger() { $('tagger').hidden = true; document.body.style.overflow = ''; tg = null; renderSummary(); }
+  $('tg-close').addEventListener('click', closeTagger);
+
   // the drive recording's share card; shown even when the drive was too short for a summary, so a file is never lost
   function recordingCard() {
     const rc = document.createElement('section'); rc.className = 'card';
@@ -1262,7 +1384,8 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     else if (recording.state === 'error') rc.innerHTML = `<h3>הקלטת הנסיעה</h3><p class="muted">ההקלטה נכשלה (${recording.msg}).</p>`;
     else {
       const nFeel = (recording.session && recording.session.events || []).filter(e => e.feel).length;
-      rc.innerHTML = `<h3>הקלטת הנסיעה</h3><p class="small muted">הקובץ <span class="num">${recording.name}</span> (כ-<span class="num">${(recording.rec.audio.bytes * 1.45 / 1048576).toFixed(1)} MB</span>) כולל את הקול, ה-GPS, התאוצה והג'ירוסקופ. הוא יאבד אם תסגור את הדף.</p><p class="small muted">לפני השיתוף, לחץ על העברות בריבועים למטה וסמן איך הן הרגישו. סומנו: <span class="num">${nFeel}</span>.</p><button class="btn primary" id="btn-share-rec">שתף הקלטה</button>`;
+      rc.innerHTML = `<h3>הקלטת הנסיעה</h3><p class="small muted">הקובץ <span class="num">${recording.name}</span> (כ-<span class="num">${(recording.rec.audio.bytes * 1.45 / 1048576).toFixed(1)} MB</span>) כולל את הקול, ה-GPS, התאוצה והג'ירוסקופ. ${recording.archived ? 'הוא שמור בטלפון, ברשימת הנסיעות למטה.' : 'הוא עוד לא נשמר בטלפון, אז שתף אותו לפני שסוגרים את הדף.'}</p><p class="small muted">לפני השיתוף, סמן איך ההעברות הרגישו. סומנו: <span class="num">${nFeel}</span>.</p><div class="row"><button class="btn primary" id="btn-tag">סמן העברות</button><button class="btn" id="btn-share-rec">שתף הקלטה</button></div>`;
+      rc.querySelector('#btn-tag').addEventListener('click', () => openTagger());
       rc.querySelector('#btn-share-rec').addEventListener('click', () => shareRecording(recordingFile()));
     }
     return rc;
@@ -1270,6 +1393,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
   function renderSummary() {
     const w = $('summary-wrap');
     w.textContent = '';
+    setTimeout(() => { if (!$('archive-card')) { const ac = document.createElement('section'); ac.className = 'card'; ac.id = 'archive-card'; ac.innerHTML = '<h3>נסיעות שמורות</h3><div id="archive-list"><p class="small muted">טוען…</p></div>'; w.appendChild(ac); } renderArchive(); }, 0);
     if (!session) {
       w.innerHTML = `<div class="empty"><div class="tile" aria-hidden="true"></div><h2>עוד אין נסיעה</h2><p>הפעל הדגמה, נסיעה או ניתוח הקלטה. כל העברה תופיע כאן כריבוע: מסגרת לתזמון, מילוי לחלקות.</p><button class="btn primary" id="go-demo">הפעל הדגמה</button></div>`;
       $('go-demo').addEventListener('click', () => { show('drive'); $('btn-demo').click(); });
@@ -1308,7 +1432,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
       ev.forEach((e, i) => {
         const b = document.createElement('button'); b.className = 'tile';
         b.style.borderColor = e.grade ? GRADE_COLOR[e.grade] : 'var(--line)'; b.style.background = fillOf(e.smooth);
-        if (e.feel) b.classList.add('felt');
+        if (e.feel) b.classList.add(e.feel === 'none' ? 'felt-none' : 'felt');
         b.setAttribute('aria-pressed', String(selected === i));
         b.setAttribute('aria-label', `${KIND_WORD[e.kind || 'up']} ${i + 1}: ${e.smooth ? SMOOTH_WORD[e.smooth] : 'חלקות לא ידועה'}${e.grade ? ', ' + GRADE_WORD[e.grade] : ''}`);
         const sp = document.createElement('span'); sp.textContent = e.kind === 'launch' ? '0›1' : e.from && e.to ? `${e.from}›${e.to}` : e.kind === 'down' ? '↓' : ''; b.appendChild(sp);
@@ -1320,7 +1444,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
         const e = ev[selected];
         // the driver's own feeling about this change (calibration truth, goes into the recording file)
         const fl = document.createElement('div'); fl.className = 'feel';
-        fl.innerHTML = `<span class="l">איך זה הרגיש לך?</span>` + [['smooth', 'חלקה'], ['ok', 'טלטלה'], ['harsh', 'קפיצה']].map(([k, w]) => `<button data-k="${k}" aria-pressed="${e.feel === k}">${w}</button>`).join('');
+        fl.innerHTML = `<span class="l">איך זה הרגיש לך?</span>` + [['smooth', 'חלקה'], ['ok', 'טלטלה'], ['harsh', 'קפיצה'], ['none', 'לא הייתה העברה']].map(([k, w]) => `<button data-k="${k}" aria-pressed="${e.feel === k}">${w}</button>`).join('');
         fl.addEventListener('click', (x) => { const b = x.target.closest('button'); if (!b) return; e.feel = e.feel === b.dataset.k ? null : b.dataset.k; LS.set('session', session); recordTag(session, e); renderSummary(); });
         mcard.appendChild(fl);
         const det = document.createElement('div'); det.className = 'detail';
@@ -1355,6 +1479,12 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
       w.appendChild(bars);
     }
 
+    if (!recording && ev.length) {
+      const tc = document.createElement('section'); tc.className = 'card';
+      tc.innerHTML = `<h3>סימון</h3><p class="small muted">סמן איך ההעברות הרגישו. האפליקציה לומדת מזה את הספים שלך.</p><div class="row"><button class="btn primary" id="btn-tag">סמן העברות</button></div>`;
+      tc.querySelector('#btn-tag').addEventListener('click', () => openTagger());
+      w.appendChild(tc);
+    }
     if (s.trace && s.trace.length > 8) {
       const cc = document.createElement('section'); cc.className = 'card';
       cc.innerHTML = `<h3>סל"ד לאורך הנסיעה</h3><div class="chart-box"><canvas id="chart" aria-label="גרף סל&quot;ד לאורך הנסיעה"></canvas></div><p class="small muted">הפס הירוק הוא חלון ההעברה. כל ריבוע הוא העברה, בגובה הסל"ד שבו העברת.</p>`;

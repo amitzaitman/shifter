@@ -2,3 +2,5 @@ tests/shots/
 __pycache__/
 .DS_Store
 node_modules/
+# drive recordings contain (rounded) location: keep them out of git
+data/
