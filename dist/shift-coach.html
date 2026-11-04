@@ -139,7 +139,10 @@ label.btn { position: relative; }
 }
 #bar { display: block; width: 100%; height: 100%; overflow: visible; }
 #bar path { fill: none; stroke-width: var(--bar-w); }
-#bar .glow { stroke-width: calc(var(--bar-w) * 2.4); }
+/* glow: its own layer, blurred by CSS (composited on the GPU in Safari, unlike an SVG blur filter) */
+#glowbox { position: absolute; inset: 0; filter: blur(calc(var(--bar-w) * 0.55)); will-change: filter; transform: translateZ(0); }
+#glowbox svg { display: block; width: 100%; height: 100%; overflow: visible; }
+#glowbox path { fill: none; stroke-width: calc(var(--bar-w) * 2.2); }
 #bar .track { stroke: var(--raise); }
 #bar .zone { stroke: color-mix(in oklab, var(--fg) 30%, var(--raise)); }
 #bar .mark { stroke: var(--fg); stroke-linecap: round; stroke-width: calc(var(--bar-w) * 1.3); }
@@ -150,17 +153,17 @@ label.btn { position: relative; }
 .topbar { display: flex; align-items: center; justify-content: space-between; gap: 10px;
   margin: calc(var(--bar-w) + 12px) calc(var(--bar-w) + 14px) 0; }
 /* the cup is the centrepiece; the gear sits above it, readable but quiet. Shadow keeps it legible on any feedback colour. */
-.dash { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1vh; min-height: 0;
+.dash { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1dvh; min-height: 0;
   padding: 0 calc(var(--bar-w) + 16px); text-shadow: 0 2px 18px color-mix(in oklab, var(--bg) 55%, transparent); }
-.gear { flex: none; font-family: var(--font-num); font-weight: 700; font-size: clamp(56px, min(13vh, 24vw), 140px); line-height: .9; color: color-mix(in oklab, var(--fg) 72%, transparent); font-variant-numeric: tabular-nums; }
+.gear { flex: none; font-family: var(--font-num); font-weight: 700; font-size: clamp(56px, min(13vh, 24vw), 140px); font-size: clamp(56px, min(13dvh, 24vw), 140px); line-height: .9; color: color-mix(in oklab, var(--fg) 72%, transparent); font-variant-numeric: tabular-nums; }
 .gear:empty { display: none; }
 /* optional rpm readout, for checking against the car's tachometer */
-.rpmcal { flex: none; font-family: var(--font-num); font-weight: 600; font-size: clamp(30px, min(6vh, 11vw), 60px); line-height: 1; color: color-mix(in oklab, var(--fg) 82%, transparent); font-variant-numeric: tabular-nums; }
+.rpmcal { flex: none; font-family: var(--font-num); font-weight: 600; font-size: clamp(30px, min(6vh, 11vw), 60px); font-size: clamp(30px, min(6dvh, 11vw), 60px); line-height: 1; color: color-mix(in oklab, var(--fg) 82%, transparent); font-variant-numeric: tabular-nums; }
 .rpmcal span { direction: ltr; unicode-bidi: isolate; }
 .rpmcal small { font-family: var(--font-body); font-weight: 500; font-size: .4em; margin-inline-start: .35em; color: color-mix(in oklab, var(--fg) 55%, transparent); }
 .hide-num .gear { display: none; }
 /* coffee cup: the liquid tilts with acceleration, ripples on a jolt and spills on a harsh one */
-.cupbox { flex: 0 1 auto; display: flex; justify-content: center; width: 100%; height: min(48vh, 92vw); min-height: 90px; pointer-events: none; }
+.cupbox { flex: 0 1 auto; display: flex; justify-content: center; width: 100%; height: min(48vh, 92vw); height: min(48dvh, 92vw); min-height: 90px; pointer-events: none; }
 .cupbox svg { height: 100%; width: 100%; overflow: visible; }
 .cupbox .rim { fill: none; stroke: color-mix(in oklab, var(--fg) 72%, transparent); stroke-width: 5; stroke-linejoin: round; stroke-linecap: round; }
 .cupbox .liq { fill: var(--coffee); }
@@ -385,14 +388,14 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
         <h3>מה נמדד ואיך</h3>
         <p class="small muted">סל"ד: מהצליל של המנוע (תדר ההצתות). הילוך: יחס סל"ד למהירות מה-GPS, נלמד לבד אחרי כמה דקות נסיעה. חלקות: קפיצות בתאוצה מהחיישן של הטלפון, ובלי חיישן לפי כמה הסל"ד צנח לפני שהקלאץ' נתפס. זו גרסה ראשונה: הספים נקבעו מראש ועוד לא כוילו ברכב אמיתי.</p>
       </div>
-      <p class="small muted" style="text-align:center">גרסה <span class="num">04.11.2026 10:21</span></p>
+      <p class="small muted" style="text-align:center">גרסה <span class="num">04.11.2026 10:23</span></p>
     </div>
   </main>
 </div>
 
 <!-- ===== STAGE (full screen while driving) ===== -->
 <div id="stage" hidden dir="rtl">
-  <div id="barbox" aria-hidden="true"><svg id="bar"></svg></div>
+  <div id="barbox" aria-hidden="true"><div id="glowbox"><svg id="barglow"></svg></div><svg id="bar"></svg></div>
   <div class="topbar">
       <div class="sensors">
         <span class="sens" id="s-mic" role="img" aria-label="מיקרופון">
@@ -1475,22 +1478,18 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     // measure the real stroke width from a probe path (the svg's own stroke-width is the 1px default)
     const probe = document.createElementNS(SVGNS, 'path'); probe.setAttribute('class', 'track'); svg.appendChild(probe);
     const sw = parseFloat(getComputedStyle(probe).strokeWidth) || 30; probe.remove();
-    const i = sw / 2, w = r.width, h = r.height, c = w / 2, rr = Math.max(6, 28 - i);
+    const i = sw / 2, w = r.width, h = r.height, c = w / 2, rr = Math.max(6, 44 - i);  // outer corner ~44px, close to the display's own curve
     const half = {
       r: `M${c} ${h - i} H${w - i - rr} A${rr} ${rr} 0 0 0 ${w - i} ${h - i - rr} V${i + rr} A${rr} ${rr} 0 0 0 ${w - i - rr} ${i} H${c}`,
       l: `M${c} ${h - i} H${i + rr} A${rr} ${rr} 0 0 1 ${i} ${h - i - rr} V${i + rr} A${rr} ${rr} 0 0 1 ${i + rr} ${i} H${c}`
     };
     svg.textContent = '';
-    // soft glow under the fill, bleeding inward (the outer half is off-screen)
-    const defs = document.createElementNS(SVGNS, 'defs');
-    defs.innerHTML = `<filter id="barglow" filterUnits="userSpaceOnUse" x="${-sw * 3}" y="${-sw * 3}" width="${w + sw * 6}" height="${h + sw * 6}"><feGaussianBlur stdDeviation="${(sw * 0.6).toFixed(1)}"/></filter>`;
-    svg.appendChild(defs);
-    for (const name of ['track', 'zone', 'glow', 'fill', 'mark']) {
+    const gsvg = $('barglow'); gsvg.setAttribute('viewBox', `0 0 ${w} ${h}`); gsvg.textContent = '';
+    for (const name of ['glow', 'track', 'zone', 'fill', 'mark']) {
       bar.layers[name] = ['r', 'l'].map(side => {
         const pth = document.createElementNS(SVGNS, 'path');
         pth.setAttribute('d', half[side]); pth.setAttribute('class', name);
-        if (name === 'glow') pth.setAttribute('filter', 'url(#barglow)');
-        svg.appendChild(pth); return pth;
+        (name === 'glow' ? gsvg : svg).appendChild(pth); return pth;
       });
     }
     bar.len = bar.layers.track[0].getTotalLength();
@@ -1676,7 +1675,8 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     seg('fill', 0, barCol ? Math.max(0.02, barFrac(r, th)) : 0, barCol ? rgb(barCol) : null, flash);
     // the glow grows with rpm: barely there at low revs, strong near the shift point
     const gf = barCol ? Math.max(0, Math.min(1, barFrac(r, th))) : 0;
-    seg('glow', 0, barCol ? Math.max(0.02, gf) : 0, barCol ? rgb(barCol) : null, flash * (0.12 + 0.78 * gf * gf));
+    const gs = flash * (0.12 + 0.78 * gf * gf), gl = barCol ? Math.max(0.02, gf) : 0, gc = barCol ? rgb(barCol) : null;
+    seg('glow', 0, gl, gc, gs);
 
     // after a shift (up, down or launch): the whole screen = smoothness, like a traffic light;
     // a dot on the bar = timing (upshifts only); a shake if it was harsh
