@@ -287,12 +287,52 @@
 
   // ספים על ה-jerk שמעל רעש הכביש (m/s³), אחרי מסנן דו-שלבי של 0.15 שנ'. נקבעו זמנית מהקלטה אמיתית ראשונה
   // (iPhone במעמד, 4.11.2026): ברעש כביש רגיל 1–4, ובאירועים 0–9 מעליו. עדיין אין סימון של מה הרגיש קופצני באמת.
-  const SMOOTH_TH = { ok: 2, harsh: 4.5 };
-  function smoothLabel(j) {
+  // ref: רעד המעמד (m/s² RMS בעמידה) שבו נקבעו הספים. בנסיעה ההיא הוא היה 1.65.
+  const SMOOTH_TH = { ok: 2, harsh: 4.5, ref: 1.65 };
+  function smoothLabel(j, th) {
+    th = th || SMOOTH_TH;
     if (j == null) return null;
-    if (j < SMOOTH_TH.ok) return 'smooth';
-    if (j < SMOOTH_TH.harsh) return 'ok';
+    if (j < th.ok) return 'smooth';
+    if (j < th.harsh) return 'ok';
     return 'harsh';
+  }
+  // התאמה למעמד: במעמד שרועד יותר, קפיצות של רעש עוברות את הסף בקלות, אז הספים עולים, ובמעמד יציב הם יורדים.
+  // ‏(רעד/רעד-ייחוס)^¼, חסום ל-0.8–1.25. העוצמה לא ידועה: עם √ וחסם 0.6, בהדמיה (שכמעט לא רועדת) הספים ירדו
+  // ב-40% והדיוק ירד מ-89% ל-67%. לכן התאמה עדינה, והלמידה מהסימונים מתקנת מעליה.
+  function mountFactor(shake, ref) {
+    if (!(shake > 0) || !(ref > 0)) return 1;
+    return Math.max(0.8, Math.min(1.25, Math.pow(shake / ref, 0.25)));
+  }
+
+  // --- למידת ספים מהסימונים של הנהג ---
+  // samples: [{ x: jerk מעל רעש הכביש, feel: 'smooth'|'ok'|'harsh', shake }]. כל x מתורגם קודם למעמד הייחוס.
+  // מחפשים את זוג הספים עם הכי מעט טעויות סדר (חלקה↔קפיצה נחשבת 2), ובתיקו את הקרוב לספים הקודמים.
+  // ואז מתקרבים אליו בהדרגה: משקל n/(n+12), כך שסימון אחד לא מזיז הרבה.
+  function learnThresholds(samples, prior) {
+    prior = prior || SMOOTH_TH;
+    const ref = prior.ref || SMOOTH_TH.ref, Y = { smooth: 0, ok: 1, harsh: 2 };
+    const pts = (samples || []).filter(q => q && q.x != null && Y[q.feel] != null).map(q => ({ x: q.x / mountFactor(q.shake, ref), y: Y[q.feel] }));
+    const n = pts.length;
+    const out = { ok: prior.ok, harsh: prior.harsh, ref, n, fitted: null, agree: null, agreePrior: null };
+    if (n < 3) return out;
+    const pred = (x, a, b) => x < a ? 0 : x < b ? 1 : 2;
+    const loss = (a, b) => pts.reduce((s, q) => s + Math.abs(pred(q.x, a, b) - q.y), 0);
+    const xs = pts.map(q => q.x).sort((a, b) => a - b), cand = [prior.ok, prior.harsh];
+    for (let i = 0; i < xs.length; i++) { cand.push(xs[i] + 0.01); if (i) cand.push((xs[i] + xs[i - 1]) / 2); }
+    const C = [...new Set(cand.map(v => Math.round(Math.max(0.3, Math.min(14, v)) * 100) / 100))].sort((a, b) => a - b);
+    let best = null;
+    for (const a of C) for (const b of C) {
+      if (b < a + 0.5) continue;
+      const L = loss(a, b), dist = Math.abs(Math.log(a / prior.ok)) + Math.abs(Math.log(b / prior.harsh));
+      if (!best || L < best.L || (L === best.L && dist < best.dist)) best = { a, b, L, dist };
+    }
+    const w = n / (n + 12);
+    out.fitted = { ok: best.a, harsh: best.b };
+    out.ok = Math.round((prior.ok + w * (best.a - prior.ok)) * 100) / 100;
+    out.harsh = Math.round(Math.max(out.ok + 0.5, prior.harsh + w * (best.b - prior.harsh)) * 100) / 100;
+    const acc = (a, b) => Math.round(100 * pts.filter(q => pred(q.x, a, b) === q.y).length / n);
+    out.agree = acc(out.ok, out.harsh); out.agreePrior = acc(prior.ok, prior.harsh);
+    return out;
   }
   // בלי מד תאוצה: חלקות לפי התאמת הסל"ד ומשך ההעברה
   function audioSmooth(revDrop, duration) {
@@ -472,6 +512,13 @@
         this.axS = [0, 0, 0]; this.axW = 0; this.axM = 0; this.cov = null; this.pc = null; this.axisOk = false;
         this.fastA = null; this.lp = null; this.lp2 = null;
       }
+    }
+    // הספים לנסיעה הזו: הבסיס (נלמד מהסימונים, או ברירת המחדל) כפול ההתאמה למעמד של הנסיעה הזו
+    smoothThresholds() {
+      // בלי ספים שנלמדו (אין סימונים) נשארים בדיוק עם ברירת המחדל: ההתאמה למעמד לא נבדקה, ובהדמיה היא הורידה דיוק.
+      // עם ספים שנלמדו, היא שומרת עליהם עקביים כשמחליפים מעמד (הסימונים נלמדו מתורגמים למעמד הייחוס).
+      const b = this.s.smoothTh || SMOOTH_TH, f = this.s.smoothTh ? mountFactor(this.mountShake(), b.ref || SMOOTH_TH.ref) : 1;
+      return { ok: Math.round(b.ok * f * 100) / 100, harsh: Math.round(b.harsh * f * 100) / 100, f: Math.round(f * 100) / 100 };
     }
     // רעד המעמד ב-m/s² (RMS בעמידה), או null אם עוד לא נמדד מספיק (כ-3 שנ')
     mountShake() { return this.shakeN >= 180 ? Math.sqrt(this.shake) : null; }
@@ -730,7 +777,9 @@
         p.ev.jerk = j != null ? Math.round(j * 10) / 10 : null;
         p.ev.jerkBase = j != null ? Math.round(base * 10) / 10 : null;
         p.ev.axis = this.axisMode;
-        p.ev.smooth = j != null ? smoothLabel(Math.max(0, j - base)) : p.fallback;
+        const th = this.smoothThresholds();
+        p.ev.th = th;
+        p.ev.smooth = j != null ? smoothLabel(Math.max(0, j - base), th) : p.fallback;
         // מקטע לגרף בסיכום: jerk (‏~30Hz) וסל"ד סביב האירוע, בזמנים יחסיים לאירוע
         const tRef = p.ev.t + (this.startT || 0), w0 = p.t0 - 0.6, w1 = p.t1 + 0.3;
         const jt = [], rt = []; let lastJ = -1;
@@ -754,7 +803,7 @@
       if (this._baseT == null || t - this._baseT > 0.5) { this._baseT = t; this._base = this.jerkBaseline(t); }
       return { a: this.fastA != null ? this.fastA : null, j: this.fastJ || 0, base: this.fastBase || 0, axis: this.fastSrc || null,
         // jHarsh stays 0 until the road level is known
-        jHarsh: last && this._base > 0 && t - last.t < 0.3 ? Math.max(0, last.j - this._base) / SMOOTH_TH.harsh : 0, fresh: t - this.fastT < 0.5 };
+        jHarsh: last && this._base > 0 && t - last.t < 0.3 ? Math.max(0, last.j - this._base) / this.smoothThresholds().harsh : 0, fresh: t - this.fastT < 0.5 };
     }
 
     // --- מצב חי לתצוגה ---
@@ -1060,7 +1109,7 @@
     return best ? { offset: best.offset, agree: best.agree, n: best.n } : { offset: 0, agree: null, n: 0 };
   }
 
-  const api = { SMOOTH_TH, makeFFT, Spectrum, RpmTracker, GearModel, Coach, DriveSim, EngineSynth, Replayer, alignOffset, thresholds, gradeShift, GRADES };
+  const api = { SMOOTH_TH, learnThresholds, mountFactor, makeFFT, Spectrum, RpmTracker, GearModel, Coach, DriveSim, EngineSynth, Replayer, alignOffset, thresholds, gradeShift, GRADES };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.ShiftEngine = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

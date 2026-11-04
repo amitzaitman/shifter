@@ -129,6 +129,25 @@ if (args[0] === 'v') {
   const r = { bumpNoG: peak('bump', false), bumpG: peak('bump', true), kickG: peak('kick', true) };
   for (const k in r) r[k] = Math.round(r[k] * 100) / 100;
   console.log(r, r.bumpG < 0.1 && r.kickG > 5 ? 'PASS' : 'FAIL');
+} else if (args[0] === 'learn') {
+  // learning thresholds from the driver's tags (synthetic tags with known boundaries)
+  let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const mk = (n, lo, hi, feel, shake = 1.65) => Array.from({ length: n }, () => ({ x: lo + rnd() * (hi - lo), feel, shake }));
+  const D = E.SMOOTH_TH, show = (name, r) => console.log(name.padEnd(44), `→ ${r.ok} / ${r.harsh}  (fit ${r.fitted ? r.fitted.ok + ' / ' + r.fitted.harsh : '-'}, n ${r.n}, agree ${r.agreePrior ?? '-'}% → ${r.agree ?? '-'}%)`);
+  const cases = {
+    'agrees with the defaults (30 tags)': [...mk(12, 0, 1.8, 'smooth'), ...mk(10, 2.2, 4.2, 'ok'), ...mk(8, 5, 9, 'harsh')],
+    'tolerant driver: smooth up to 3.5 (30 tags)': [...mk(12, 0, 3.4, 'smooth'), ...mk(10, 3.6, 6.8, 'ok'), ...mk(8, 7.2, 11, 'harsh')],
+    'only 2 tags': [...mk(1, 0, 1, 'smooth'), ...mk(1, 6, 7, 'harsh')],
+    'only smooth tags, some above 2 (8 tags)': mk(8, 0.5, 3, 'smooth'),
+    'defaults + 1 wrong tag (21 tags)': [...mk(10, 0, 1.8, 'smooth'), ...mk(6, 2.2, 4.2, 'ok'), ...mk(4, 5, 9, 'harsh'), { x: 0.6, feel: 'harsh', shake: 1.65 }],
+    'steady mount 0.3: same feel, half the jerk': [...mk(12, 0, 0.9, 'smooth', 0.3), ...mk(10, 1.1, 2.1, 'ok', 0.3), ...mk(8, 2.5, 4.5, 'harsh', 0.3)],
+  };
+  const res = {}; for (const [k, v] of Object.entries(cases)) { res[k] = E.learnThresholds(v, D); show(k, res[k]); }
+  const ok = res['agrees with the defaults (30 tags)'], tol = res['tolerant driver: smooth up to 3.5 (30 tags)'];
+  const pass = Math.abs(ok.ok - D.ok) < 0.35 && Math.abs(ok.harsh - D.harsh) < 0.6 && tol.ok > 2.6 && tol.harsh > 5.4 && res['only 2 tags'].ok === D.ok
+    && res['only smooth tags, some above 2 (8 tags)'].ok > D.ok && Math.abs(res['defaults + 1 wrong tag (21 tags)'].ok - D.ok) < 0.4;
+  console.log(`mount factor: shake 0.3 → ×${E.mountFactor(0.3, 1.65).toFixed(2)}, 1.65 → ×${E.mountFactor(1.65, 1.65).toFixed(2)}, 3 → ×${E.mountFactor(3, 1.65).toFixed(2)}`);
+  console.log(pass ? 'PASS' : 'FAIL');
 } else if (args[0] === 'phone') {
   // טלפון מוטה ומסובב, פניות חדות ורעש כביש: ציר נסיעה + סף יחסי מול jerk בכל הכיוונים
   // החלקות נבדקת על כל האירועים יחד (העברה למעלה, הורדה, זינוק); כל שורה = ממוצע של 3 הרצות

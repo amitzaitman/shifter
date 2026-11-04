@@ -144,6 +144,8 @@ for (const [name, list] of [['passenger labels', rec.labels], ['driver tags afte
     if (v.length) console.log(`  ${k.padEnd(7)} VDV above road (ISO Wd): min ${v[0].toFixed(2)}  median ${v[v.length >> 1].toFixed(2)}  max ${v[v.length - 1].toFixed(2)}  (n ${v.length})`);
   }
   console.log(`current thresholds: smooth < ${E.SMOOTH_TH.ok}, ok < ${E.SMOOTH_TH.harsh}, harsh above`);
+  const fit = E.learnThresholds(rows.filter(x => x.e && ex(x.e) != null).map(x => ({ x: ex(x.e), feel: x.k, shake: c.mountShake() })), E.SMOOTH_TH);
+  if (fit.fitted) console.log(`learned (what the app would use after these tags): ${fit.ok} / ${fit.harsh} (best fit ${fit.fitted.ok} / ${fit.fitted.harsh}); agreement ${fit.agreePrior}% → ${fit.agree}%`);
  }
 }
 if ((rec.rot || []).length) console.log(`\ngyro        ${rec.rot.length} samples recorded (not used by the engine yet)`);

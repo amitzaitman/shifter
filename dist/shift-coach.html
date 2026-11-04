@@ -426,7 +426,12 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
         <h3>מה נמדד ואיך</h3>
         <p class="small muted">סל"ד: מהצליל של המנוע (תדר ההצתות). הילוך: יחס סל"ד למהירות מה-GPS, נלמד לבד אחרי כמה דקות נסיעה. חלקות: קפיצות בתאוצה מהחיישן של הטלפון, ובלי חיישן לפי כמה הסל"ד צנח לפני שהקלאץ' נתפס. זו גרסה ראשונה: הספים נקבעו מראש ועוד לא כוילו ברכב אמיתי.</p>
       </div>
-      <p class="small muted" style="text-align:center">גרסה <span class="num">04.11.2026 19:35</span></p>
+      <div class="card" id="learn-card">
+        <h3>מה האפליקציה למדה ממך</h3>
+        <div id="learn-body" class="small"></div>
+        <div class="row"><button class="btn" id="learn-reset">אפס למידה</button></div>
+      </div>
+      <p class="small muted" style="text-align:center">גרסה <span class="num">04.11.2026 19:48</span></p>
     </div>
   </main>
 </div>
@@ -780,12 +785,52 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
 
   // ספים על ה-jerk שמעל רעש הכביש (m/s³), אחרי מסנן דו-שלבי של 0.15 שנ'. נקבעו זמנית מהקלטה אמיתית ראשונה
   // (iPhone במעמד, 4.11.2026): ברעש כביש רגיל 1–4, ובאירועים 0–9 מעליו. עדיין אין סימון של מה הרגיש קופצני באמת.
-  const SMOOTH_TH = { ok: 2, harsh: 4.5 };
-  function smoothLabel(j) {
+  // ref: רעד המעמד (m/s² RMS בעמידה) שבו נקבעו הספים. בנסיעה ההיא הוא היה 1.65.
+  const SMOOTH_TH = { ok: 2, harsh: 4.5, ref: 1.65 };
+  function smoothLabel(j, th) {
+    th = th || SMOOTH_TH;
     if (j == null) return null;
-    if (j < SMOOTH_TH.ok) return 'smooth';
-    if (j < SMOOTH_TH.harsh) return 'ok';
+    if (j < th.ok) return 'smooth';
+    if (j < th.harsh) return 'ok';
     return 'harsh';
+  }
+  // התאמה למעמד: במעמד שרועד יותר, קפיצות של רעש עוברות את הסף בקלות, אז הספים עולים, ובמעמד יציב הם יורדים.
+  // ‏(רעד/רעד-ייחוס)^¼, חסום ל-0.8–1.25. העוצמה לא ידועה: עם √ וחסם 0.6, בהדמיה (שכמעט לא רועדת) הספים ירדו
+  // ב-40% והדיוק ירד מ-89% ל-67%. לכן התאמה עדינה, והלמידה מהסימונים מתקנת מעליה.
+  function mountFactor(shake, ref) {
+    if (!(shake > 0) || !(ref > 0)) return 1;
+    return Math.max(0.8, Math.min(1.25, Math.pow(shake / ref, 0.25)));
+  }
+
+  // --- למידת ספים מהסימונים של הנהג ---
+  // samples: [{ x: jerk מעל רעש הכביש, feel: 'smooth'|'ok'|'harsh', shake }]. כל x מתורגם קודם למעמד הייחוס.
+  // מחפשים את זוג הספים עם הכי מעט טעויות סדר (חלקה↔קפיצה נחשבת 2), ובתיקו את הקרוב לספים הקודמים.
+  // ואז מתקרבים אליו בהדרגה: משקל n/(n+12), כך שסימון אחד לא מזיז הרבה.
+  function learnThresholds(samples, prior) {
+    prior = prior || SMOOTH_TH;
+    const ref = prior.ref || SMOOTH_TH.ref, Y = { smooth: 0, ok: 1, harsh: 2 };
+    const pts = (samples || []).filter(q => q && q.x != null && Y[q.feel] != null).map(q => ({ x: q.x / mountFactor(q.shake, ref), y: Y[q.feel] }));
+    const n = pts.length;
+    const out = { ok: prior.ok, harsh: prior.harsh, ref, n, fitted: null, agree: null, agreePrior: null };
+    if (n < 3) return out;
+    const pred = (x, a, b) => x < a ? 0 : x < b ? 1 : 2;
+    const loss = (a, b) => pts.reduce((s, q) => s + Math.abs(pred(q.x, a, b) - q.y), 0);
+    const xs = pts.map(q => q.x).sort((a, b) => a - b), cand = [prior.ok, prior.harsh];
+    for (let i = 0; i < xs.length; i++) { cand.push(xs[i] + 0.01); if (i) cand.push((xs[i] + xs[i - 1]) / 2); }
+    const C = [...new Set(cand.map(v => Math.round(Math.max(0.3, Math.min(14, v)) * 100) / 100))].sort((a, b) => a - b);
+    let best = null;
+    for (const a of C) for (const b of C) {
+      if (b < a + 0.5) continue;
+      const L = loss(a, b), dist = Math.abs(Math.log(a / prior.ok)) + Math.abs(Math.log(b / prior.harsh));
+      if (!best || L < best.L || (L === best.L && dist < best.dist)) best = { a, b, L, dist };
+    }
+    const w = n / (n + 12);
+    out.fitted = { ok: best.a, harsh: best.b };
+    out.ok = Math.round((prior.ok + w * (best.a - prior.ok)) * 100) / 100;
+    out.harsh = Math.round(Math.max(out.ok + 0.5, prior.harsh + w * (best.b - prior.harsh)) * 100) / 100;
+    const acc = (a, b) => Math.round(100 * pts.filter(q => pred(q.x, a, b) === q.y).length / n);
+    out.agree = acc(out.ok, out.harsh); out.agreePrior = acc(prior.ok, prior.harsh);
+    return out;
   }
   // בלי מד תאוצה: חלקות לפי התאמת הסל"ד ומשך ההעברה
   function audioSmooth(revDrop, duration) {
@@ -965,6 +1010,13 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
         this.axS = [0, 0, 0]; this.axW = 0; this.axM = 0; this.cov = null; this.pc = null; this.axisOk = false;
         this.fastA = null; this.lp = null; this.lp2 = null;
       }
+    }
+    // הספים לנסיעה הזו: הבסיס (נלמד מהסימונים, או ברירת המחדל) כפול ההתאמה למעמד של הנסיעה הזו
+    smoothThresholds() {
+      // בלי ספים שנלמדו (אין סימונים) נשארים בדיוק עם ברירת המחדל: ההתאמה למעמד לא נבדקה, ובהדמיה היא הורידה דיוק.
+      // עם ספים שנלמדו, היא שומרת עליהם עקביים כשמחליפים מעמד (הסימונים נלמדו מתורגמים למעמד הייחוס).
+      const b = this.s.smoothTh || SMOOTH_TH, f = this.s.smoothTh ? mountFactor(this.mountShake(), b.ref || SMOOTH_TH.ref) : 1;
+      return { ok: Math.round(b.ok * f * 100) / 100, harsh: Math.round(b.harsh * f * 100) / 100, f: Math.round(f * 100) / 100 };
     }
     // רעד המעמד ב-m/s² (RMS בעמידה), או null אם עוד לא נמדד מספיק (כ-3 שנ')
     mountShake() { return this.shakeN >= 180 ? Math.sqrt(this.shake) : null; }
@@ -1223,7 +1275,9 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
         p.ev.jerk = j != null ? Math.round(j * 10) / 10 : null;
         p.ev.jerkBase = j != null ? Math.round(base * 10) / 10 : null;
         p.ev.axis = this.axisMode;
-        p.ev.smooth = j != null ? smoothLabel(Math.max(0, j - base)) : p.fallback;
+        const th = this.smoothThresholds();
+        p.ev.th = th;
+        p.ev.smooth = j != null ? smoothLabel(Math.max(0, j - base), th) : p.fallback;
         // מקטע לגרף בסיכום: jerk (‏~30Hz) וסל"ד סביב האירוע, בזמנים יחסיים לאירוע
         const tRef = p.ev.t + (this.startT || 0), w0 = p.t0 - 0.6, w1 = p.t1 + 0.3;
         const jt = [], rt = []; let lastJ = -1;
@@ -1247,7 +1301,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
       if (this._baseT == null || t - this._baseT > 0.5) { this._baseT = t; this._base = this.jerkBaseline(t); }
       return { a: this.fastA != null ? this.fastA : null, j: this.fastJ || 0, base: this.fastBase || 0, axis: this.fastSrc || null,
         // jHarsh stays 0 until the road level is known
-        jHarsh: last && this._base > 0 && t - last.t < 0.3 ? Math.max(0, last.j - this._base) / SMOOTH_TH.harsh : 0, fresh: t - this.fastT < 0.5 };
+        jHarsh: last && this._base > 0 && t - last.t < 0.3 ? Math.max(0, last.j - this._base) / this.smoothThresholds().harsh : 0, fresh: t - this.fastT < 0.5 };
     }
 
     // --- מצב חי לתצוגה ---
@@ -1553,7 +1607,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     return best ? { offset: best.offset, agree: best.agree, n: best.n } : { offset: 0, agree: null, n: 0 };
   }
 
-  const api = { SMOOTH_TH, makeFFT, Spectrum, RpmTracker, GearModel, Coach, DriveSim, EngineSynth, Replayer, alignOffset, thresholds, gradeShift, GRADES };
+  const api = { SMOOTH_TH, learnThresholds, mountFactor, makeFFT, Spectrum, RpmTracker, GearModel, Coach, DriveSim, EngineSynth, Replayer, alignOffset, thresholds, gradeShift, GRADES };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.ShiftEngine = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
@@ -1664,8 +1718,22 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
   }
 
   // ---------- one driving run (live, demo) ----------
+  // ---------- learning from the driver's tags ----------
+  // Every 'how did it feel?' tag on a motion-graded change becomes a sample (jerk above the road, the feel, the
+  // drive's mount shake). After each tag the thresholds are refitted (E.learnThresholds) and the next drive uses them.
+  function learnStore() { return LS.get('learn', { samples: [], th: null, updated: null }); }
+  function learnedTh() { const L = learnStore(); return L.th && L.th.n >= 3 ? { ok: L.th.ok, harsh: L.th.harsh, ref: L.th.ref } : null; }
+  function recordTag(sess, e) {
+    const L = learnStore(), key = `${sess.date}|${e.t}`;
+    L.samples = L.samples.filter(q => q.key !== key);
+    if (e.feel && e.smoothSrc === 'motion' && e.jerk != null)
+      L.samples.push({ key, x: Math.max(0, e.jerk - (e.jerkBase || 0)), feel: e.feel, shake: sess.mountShake, kind: e.kind || 'up', engine: e.smooth });
+    L.samples = L.samples.slice(-300);
+    L.th = E.learnThresholds(L.samples, E.SMOOTH_TH); L.updated = new Date().toISOString();
+    LS.set('learn', L);
+  }
   function makeCoach(gm) {
-    const c = new E.Coach(settings, gm);
+    const c = new E.Coach(Object.assign({}, settings, { smoothTh: learnedTh() || undefined }), gm);
     c.onEvent = (ev) => { feedback = { ev, t0: run.clock(), until: run.clock() + 3 }; };
     c.onEventUpdate = (ev) => { if (feedback && feedback.ev === ev) feedback.until = Math.max(feedback.until, run.clock() + 2.2); };
     return c;
@@ -1721,7 +1789,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
   const reduceMotion = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
   // shake amplitude in px from the jerk (m/s³) when we have it, else from the smoothness class
   function shakeAmp(ev) {
-    if (ev.jerk != null) return Math.max(0, Math.min(16, (ev.jerk - (ev.jerkBase || 0) - E.SMOOTH_TH.ok) * 2.4));
+    if (ev.jerk != null) return Math.max(0, Math.min(16, (ev.jerk - (ev.jerkBase || 0) - (ev.th || E.SMOOTH_TH).ok) * 2.4));
     return { smooth: 0, ok: 4, harsh: 11 }[ev.smooth] || 0;
   }
   resetColour();
@@ -1901,7 +1969,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     const step = Math.max(1, Math.ceil(tr.length / 2400));
     return {
       source, date: new Date().toISOString(), th: coach.th, nGears: settings.nGears,
-      events: coach.events.map(e => ({ kind: e.kind || 'up', t: e.t, tAbs: e.t + (coach.startT || 0), from: e.from, to: e.to, before: e.before, after: e.after, grade: e.grade, smooth: e.smooth, jerk: e.jerk, jerkBase: e.jerkBase, vdv: e.vdv, vdvBase: e.vdvBase, axis: e.axis, trace: e.trace, revDrop: e.revDrop, duration: e.duration, smoothSrc: e.smoothSrc })),
+      events: coach.events.map(e => ({ kind: e.kind || 'up', t: e.t, tAbs: e.t + (coach.startT || 0), from: e.from, to: e.to, before: e.before, after: e.after, grade: e.grade, smooth: e.smooth, jerk: e.jerk, jerkBase: e.jerkBase, th: e.th, vdv: e.vdv, vdvBase: e.vdvBase, axis: e.axis, trace: e.trace, revDrop: e.revDrop, duration: e.duration, smoothSrc: e.smoothSrc })),
       trace: tr.filter((_, i) => i % step === 0).map(p => [Math.round(p.t * 10) / 10, p.rpm]),
       mountShake: coach.mountShake() != null ? Math.round(coach.mountShake() * 100) / 100 : null, remounts: coach.remounts || 0,
       summary: coach.summary()
@@ -2368,7 +2436,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
         // the driver's own feeling about this change (calibration truth, goes into the recording file)
         const fl = document.createElement('div'); fl.className = 'feel';
         fl.innerHTML = `<span class="l">איך זה הרגיש לך?</span>` + [['smooth', 'חלקה'], ['ok', 'טלטלה'], ['harsh', 'קפיצה']].map(([k, w]) => `<button data-k="${k}" aria-pressed="${e.feel === k}">${w}</button>`).join('');
-        fl.addEventListener('click', (x) => { const b = x.target.closest('button'); if (!b) return; e.feel = e.feel === b.dataset.k ? null : b.dataset.k; LS.set('session', session); renderSummary(); });
+        fl.addEventListener('click', (x) => { const b = x.target.closest('button'); if (!b) return; e.feel = e.feel === b.dataset.k ? null : b.dataset.k; LS.set('session', session); recordTag(session, e); renderSummary(); });
         mcard.appendChild(fl);
         const det = document.createElement('div'); det.className = 'detail';
         const mm = Math.floor(e.t / 60), ss = String(Math.floor(e.t % 60)).padStart(2, '0');
@@ -2418,7 +2486,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     const x = (t) => ((t - t0) / (t1 - t0 || 1)) * W;
     const inWin = tr.j.filter(q => q[0] >= tr.w[0] && q[0] <= tr.w[1]);
     const pk = (inWin.length ? inWin : tr.j).reduce((b, q) => q[1] > b[1] ? q : b);
-    const yMax = Math.max(base + E.SMOOTH_TH.harsh * 1.8, pk[1] * 1.15), y = (j) => bot - (Math.min(j, yMax) / yMax) * (bot - top);
+    const TH = e.th || E.SMOOTH_TH, yMax = Math.max(base + TH.harsh * 1.8, pk[1] * 1.15), y = (j) => bot - (Math.min(j, yMax) / yMax) * (bot - top);
     const band = (a, b, c) => { const y1 = y(Math.min(yMax, base + b)), y0 = y(base + a); return y0 > y1 ? `<rect x="0" y="${y1.toFixed(1)}" width="${W}" height="${(y0 - y1).toFixed(1)}" fill="var(--${c})" opacity=".13"/>` : ''; };
     const line = (pts, fx, fy) => { let d = '', pen = false; for (const q of pts) { if (q[1] == null) { pen = false; continue; } d += `${pen ? 'L' : 'M'}${fx(q[0]).toFixed(1)} ${fy(q[1]).toFixed(1)}`; pen = true; } return d; };
     const rp = (tr.rpm || []).filter(q => q[1]); let rLine = '';
@@ -2428,7 +2496,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     box.className = 'jchart';
     box.innerHTML = `<h3>למה ${e.smooth ? SMOOTH_WORD[e.smooth] : ''}?</h3>
       <svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="טלטלה בזמן ההעברה: שיא ${pk[1]} m/s³, רעש כביש ${base}">
-        ${band(0, E.SMOOTH_TH.ok, 'good')}${band(E.SMOOTH_TH.ok, E.SMOOTH_TH.harsh, 'slight')}${band(E.SMOOTH_TH.harsh, 1e9, 'late')}
+        ${band(0, TH.ok, 'good')}${band(TH.ok, TH.harsh, 'slight')}${band(TH.harsh, 1e9, 'late')}
         <rect x="${x(tr.w[0]).toFixed(1)}" y="${top - 4}" width="${(x(tr.w[1]) - x(tr.w[0])).toFixed(1)}" height="${bot - top + 4}" fill="var(--fg)" opacity=".05"/>
         ${rLine}
         <line x1="0" x2="${W}" y1="${y(base).toFixed(1)}" y2="${y(base).toFixed(1)}" stroke="var(--muted)" stroke-dasharray="4 4"/>
@@ -2439,7 +2507,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
         <text x="${x(0).toFixed(1)}" y="${H - 2}" fill="var(--muted)" font-size="10" text-anchor="middle">${e.kind === 'launch' ? 'יציאה' : e.kind === 'down' ? 'קלאץ\'' : 'שיא הסל"ד'}</text>
       </svg>
       <div class="jlegend"><span class="l-j">טלטלה</span><span class="l-b">רעש הכביש (${base})</span><span class="l-r">סל"ד</span><span class="l-w">החלון שנמדד</span></div>
-      <p class="small muted">הציון נקבע לפי השיא בתוך החלון, מעל רעש הכביש: ירוק עד ${E.SMOOTH_TH.ok}, צהוב עד ${E.SMOOTH_TH.harsh}, אדום מעל.</p>`;
+      <p class="small muted">הציון נקבע לפי השיא בתוך החלון, מעל רעש הכביש: ירוק עד ${TH.ok}, צהוב עד ${TH.harsh}, אדום מעל${TH.f && TH.f !== 1 ? ` (מותאם לרעד המעמד ×${TH.f})` : ''}.</p>`;
     return box;
   }
 
@@ -2491,7 +2559,19 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
   function pressed(container, attr, val) {
     $(container).querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(String(b.dataset[attr]) === String(val))));
   }
+  function renderLearn() {
+    const L = learnStore(), th = L.th, n = L.samples.length, c = { smooth: 0, ok: 0, harsh: 0 };
+    L.samples.forEach(q => c[q.feel]++);
+    const d = E.SMOOTH_TH;
+    $('learn-body').innerHTML = !n
+      ? `<p class="muted">עוד אין סימונים. אחרי נסיעה, בסיכום, לחץ על העברה וסמן איך היא הרגישה. אחרי 3 סימונים לפחות האפליקציה מתחילה לכוונן את הספים, וכל סימון נוסף מזיז אותם קצת.</p>`
+      : `<p>סימונים: <span class="num">${n}</span> (חלקה <span class="num">${c.smooth}</span> · טלטלה <span class="num">${c.ok}</span> · קפיצה <span class="num">${c.harsh}</span>)</p>
+         <p>הספים עכשיו (m/s³ מעל רעש הכביש): חלקה עד <span class="num">${th && th.n >= 3 ? th.ok : d.ok}</span>, קפיצה מעל <span class="num">${th && th.n >= 3 ? th.harsh : d.harsh}</span>. ברירת המחדל: <span class="num">${d.ok}</span> ו-<span class="num">${d.harsh}</span>. בכל נסיעה הם מותאמים גם לרעד של המעמד.</p>
+         ${th && th.agree != null ? `<p class="muted">על ההעברות שסימנת, הספים הנוכחיים מסכימים איתך ב-<span class="num">${th.agree}%</span> מהמקרים, וברירת המחדל ב-<span class="num">${th.agreePrior}%</span>. הספים זזים בהדרגה, אז ההסכמה עולה עם עוד סימונים.</p>` : `<p class="muted">צריך לפחות 3 סימונים של העברות שנמדדו בחיישן התנועה.</p>`}
+         <p class="muted">עודכן: <span class="num">${L.updated ? new Date(L.updated).toLocaleString('he-IL', { dateStyle: 'short', timeStyle: 'short' }) : '–'}</span></p>`;
+  }
   function renderSettings() {
+    renderLearn();
     pressed('seg-mode', 'mode', settings.mode);
     pressed('seg-gears', 'n', settings.nGears);
     pressed('seg-cyl', 'c', settings.cylinders);
@@ -2537,6 +2617,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
   $('in-eco').addEventListener('input', (e) => { settings.ecoTarget = +e.target.value; saveSettings(); renderSettings(); });
   $('in-red').addEventListener('input', (e) => { settings.redline = +e.target.value; saveSettings(); renderSettings(); });
   $('in-sound').addEventListener('change', (e) => { settings.sound = e.target.checked; saveSettings(); });
+  $('learn-reset').addEventListener('click', () => { LS.set('learn', { samples: [], th: null, updated: null }); renderLearn(); });
   $('in-record').addEventListener('change', (e) => { settings.record = e.target.checked; saveSettings(); });
   $('in-cup').addEventListener('change', (e) => { settings.cup = e.target.checked; saveSettings(); });
   $('in-rpm').addEventListener('change', (e) => { settings.showRpm = e.target.checked; saveSettings(); });
