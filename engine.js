@@ -317,6 +317,7 @@
       this.jerk = []; this.lp = null; this.lastMotion = null; this.gv = null;
       // ציר הנסיעה בתוך מישור הטלפון: S = Σ(תאוצת GPS × וקטור התאוצה הממוצע), W = Σ(תאוצת GPS²). PCA כגיבוי בלי GPS.
       this.accLog = []; this.axS = [0, 0, 0]; this.axW = 0; this.cov = null; this.pc = null; this.axisMode = 'all';
+      this._baseT = null; this._base = 0;
       this.state = 'track'; this.drop = null; this.refractUntil = 0;
       this.events = []; this.pending = [];
       this.lowSince = null; this.trace = []; this.lastTraceT = -1e9; this.startT = null;
@@ -636,10 +637,26 @@
         p.ev.jerkBase = j != null ? Math.round(base * 10) / 10 : null;
         p.ev.axis = this.axisMode;
         p.ev.smooth = j != null ? smoothLabel(Math.max(0, j - base)) : p.fallback;
+        // מקטע לגרף בסיכום: jerk (‏~30Hz) וסל"ד סביב האירוע, בזמנים יחסיים לאירוע
+        const tRef = p.ev.t + (this.startT || 0), w0 = p.t0 - 0.6, w1 = p.t1 + 0.3;
+        const jt = [], rt = []; let lastJ = -1;
+        let pk = null;
+        for (const e of this.jerk) if (e.t >= p.t0 && e.t <= p.t1 && (!pk || e.j > pk.j)) pk = e;
+        for (const e of this.jerk) if (e.t >= w0 && e.t <= w1 && (e.t - lastJ >= 1 / 30 || e === pk)) { lastJ = e.t; jt.push([Math.round((e.t - tRef) * 100) / 100, Math.round(e.j * 10) / 10]); }
+        for (const f of this.hist) if (f.t >= w0 && f.t <= w1) rt.push([Math.round((f.t - tRef) * 100) / 100, f.rpm ? Math.round(f.rpm) : null]);
+        p.ev.trace = { j: jt, rpm: rt, w: [Math.round((p.t0 - tRef) * 100) / 100, Math.round((p.t1 - tRef) * 100) / 100] };
         p.ev.smoothSrc = j != null ? 'motion' : p.fallback ? 'sound' : null;
         if (this.onEventUpdate) this.onEventUpdate(p.ev);
         return false;
       });
+    }
+
+    // --- תאוצה חיה לכוס הקפה: תאוצה לאורך הנסיעה (אם הציר נלמד), ה-jerk האחרון, ורעש הכביש ---
+    motionState(t) {
+      if (!this.hasMotion || !this.lp) return null;
+      const last = this.jerk[this.jerk.length - 1];
+      if (this._baseT == null || t - this._baseT > 0.5) { this._baseT = t; this._base = this.jerkBaseline(t); }
+      return { a: this.axisMode === 'all' ? null : this.lp[0], j: last ? last.j : 0, base: this._base || 0, fresh: last ? t - last.t < 0.5 : false };
     }
 
     // --- מצב חי לתצוגה ---

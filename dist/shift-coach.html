@@ -23,6 +23,7 @@
   --frame: var(--line);
   --fill: var(--bg);
   --frame-w: clamp(14px, 4.2vmin, 30px);
+  --coffee: #c8925f;
   color-scheme: dark;
 }
 html, body { height: 100%; }
@@ -158,6 +159,14 @@ label.btn { position: relative; }
 .dash.no-gear .gear { display: none; }
 .dash.no-gear .rpm { font-size: clamp(64px, min(17vh, 26vw), 170px); }
 .hide-num .gear, .hide-num .rpm, .hide-num .kmh { visibility: hidden; }
+/* coffee cup: the liquid tilts with acceleration, ripples on a jolt and spills on a harsh one */
+.cupbox { flex: none; display: flex; justify-content: center; height: clamp(70px, 17vh, 150px); margin: 0 0 8px; pointer-events: none; }
+.cupbox svg { height: 100%; width: auto; overflow: visible; }
+.cupbox .rim { fill: none; stroke: color-mix(in oklab, var(--fg) 72%, transparent); stroke-width: 5; stroke-linejoin: round; stroke-linecap: round; }
+.cupbox .liq { fill: var(--coffee); }
+.cupbox .drop { fill: var(--coffee); }
+.cupbox.idle { opacity: .35; }
+.no-cup .cupbox { display: none; }
 .dock {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
   margin: 0 calc(var(--frame-w) + 18px) calc(var(--frame-w) + 18px);
@@ -198,6 +207,12 @@ label.btn { position: relative; }
 .detail { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px 16px; }
 .detail div { display: flex; flex-direction: column; min-width: 0; }
 .detail .l { font-size: 12px; color: var(--muted); }
+.jchart { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--line); padding-top: 10px; }
+.jchart svg { display: block; }
+.jlegend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--muted); }
+.jlegend span::before { content: ""; display: inline-block; width: 14px; height: 3px; vertical-align: middle; margin-inline-end: 5px; background: currentColor; border-radius: 2px; }
+.jlegend .l-j::before { background: var(--fg); } .jlegend .l-b::before { background: repeating-linear-gradient(90deg, var(--muted) 0 4px, transparent 4px 8px); }
+.jlegend .l-w::before { height: 10px; background: color-mix(in oklab, var(--fg) 12%, transparent); }
 .detail .v { font-weight: 600; }
 .bars { display: flex; flex-direction: column; gap: 10px; }
 .bar-line { display: grid; grid-template-columns: 64px 1fr; gap: 10px; align-items: center; font-size: 13px; }
@@ -278,7 +293,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
           <div class="key"><span class="sw fill c-good"></span>ירוק: חלקה, הנוסעים לא הרגישו</div>
           <div class="key"><span class="sw fill c-slight"></span>צהוב: טלטלה קלה</div>
           <div class="key"><span class="sw fill c-late"></span>אדום ורעידה: קפיצה</div>
-          <div class="key muted">אחרי כל העברה למעלה, הורדת הילוך וזינוק.</div>
+          <div class="key muted">אחרי כל העברה למעלה, הורדת הילוך וזינוק. כוס הקפה בתחתית המסך מראה את התאוצה בזמן אמת: היא נשפכת כשיש קפיצה. בסיכום, לחיצה על העברה מראה למה היא קיבלה את הציון.</div>
         </div>
         <div class="card">
           <h3>הפס: סל"ד ותזמון</h3>
@@ -344,6 +359,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
       <div class="card">
         <div class="switch"><label for="in-sound">צפצוף כשצריך להעביר</label><input type="checkbox" id="in-sound"></div>
         <div class="switch"><label for="in-nums">להציג סל"ד והילוך על המסך</label><input type="checkbox" id="in-nums" checked></div>
+        <div class="switch"><label for="in-cup">כוס קפה שמראה את התאוצה בזמן נסיעה</label><input type="checkbox" id="in-cup" checked></div>
         <div class="switch"><label for="in-record">לשמור הקלטה של כל נסיעה (קול, GPS ותאוצה), בשביל כיול</label><input type="checkbox" id="in-record"></div>
         <p class="small muted">ההקלטה כוללת את המיקום שלך. בסוף הנסיעה יופיע במסך הסיכום כפתור לשיתוף הקובץ. הקובץ לא נשמר בטלפון: אם תסגור את הדף לפני שתשתף, הוא יאבד.</p>
       </div>
@@ -395,6 +411,15 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     <div class="gear" id="d-gear"></div>
     <div class="rpm"><span id="d-rpm">----</span><small>סל"ד</small></div>
     <div class="kmh"><span id="d-kmh">--</span><small>קמ"ש</small></div>
+  </div>
+  <div class="cupbox" id="cupbox" aria-hidden="true">
+    <svg viewBox="-34 -46 192 176">
+      <defs><clipPath id="cup-in"><path d="M8 10 H112 L103 108 Q101 117 92 117 H28 Q19 117 17 108 Z"/></clipPath></defs>
+      <g clip-path="url(#cup-in)"><path class="liq" id="cup-liq" d="M0 40 H120 V130 H0 Z"/></g>
+      <g id="cup-drops"></g>
+      <path class="rim" d="M8 10 H112 L103 108 Q101 117 92 117 H28 Q19 117 17 108 Z"/>
+      <path class="rim" d="M110 32 q24 4 20 27 q-3 17 -24 17"/>
+    </svg>
   </div>
   <div class="dock">
     <div class="row" style="flex-wrap:nowrap">
@@ -724,6 +749,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
       this.jerk = []; this.lp = null; this.lastMotion = null; this.gv = null;
       // ציר הנסיעה בתוך מישור הטלפון: S = Σ(תאוצת GPS × וקטור התאוצה הממוצע), W = Σ(תאוצת GPS²). PCA כגיבוי בלי GPS.
       this.accLog = []; this.axS = [0, 0, 0]; this.axW = 0; this.cov = null; this.pc = null; this.axisMode = 'all';
+      this._baseT = null; this._base = 0;
       this.state = 'track'; this.drop = null; this.refractUntil = 0;
       this.events = []; this.pending = [];
       this.lowSince = null; this.trace = []; this.lastTraceT = -1e9; this.startT = null;
@@ -1043,10 +1069,26 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
         p.ev.jerkBase = j != null ? Math.round(base * 10) / 10 : null;
         p.ev.axis = this.axisMode;
         p.ev.smooth = j != null ? smoothLabel(Math.max(0, j - base)) : p.fallback;
+        // מקטע לגרף בסיכום: jerk (‏~30Hz) וסל"ד סביב האירוע, בזמנים יחסיים לאירוע
+        const tRef = p.ev.t + (this.startT || 0), w0 = p.t0 - 0.6, w1 = p.t1 + 0.3;
+        const jt = [], rt = []; let lastJ = -1;
+        let pk = null;
+        for (const e of this.jerk) if (e.t >= p.t0 && e.t <= p.t1 && (!pk || e.j > pk.j)) pk = e;
+        for (const e of this.jerk) if (e.t >= w0 && e.t <= w1 && (e.t - lastJ >= 1 / 30 || e === pk)) { lastJ = e.t; jt.push([Math.round((e.t - tRef) * 100) / 100, Math.round(e.j * 10) / 10]); }
+        for (const f of this.hist) if (f.t >= w0 && f.t <= w1) rt.push([Math.round((f.t - tRef) * 100) / 100, f.rpm ? Math.round(f.rpm) : null]);
+        p.ev.trace = { j: jt, rpm: rt, w: [Math.round((p.t0 - tRef) * 100) / 100, Math.round((p.t1 - tRef) * 100) / 100] };
         p.ev.smoothSrc = j != null ? 'motion' : p.fallback ? 'sound' : null;
         if (this.onEventUpdate) this.onEventUpdate(p.ev);
         return false;
       });
+    }
+
+    // --- תאוצה חיה לכוס הקפה: תאוצה לאורך הנסיעה (אם הציר נלמד), ה-jerk האחרון, ורעש הכביש ---
+    motionState(t) {
+      if (!this.hasMotion || !this.lp) return null;
+      const last = this.jerk[this.jerk.length - 1];
+      if (this._baseT == null || t - this._baseT > 0.5) { this._baseT = t; this._base = this.jerkBaseline(t); }
+      return { a: this.axisMode === 'all' ? null : this.lp[0], j: last ? last.j : 0, base: this._base || 0, fresh: last ? t - last.t < 0.5 : false };
     }
 
     // --- מצב חי לתצוגה ---
@@ -1363,7 +1405,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     get(k, d) { try { const v = localStorage.getItem('shiftcoach.' + k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
     set(k, v) { try { localStorage.setItem('shiftcoach.' + k, JSON.stringify(v)); } catch (e) { /* storage blocked */ } }
   };
-  const DEFAULTS = { mode: 'eco', ecoTarget: 2500, redline: 6500, nGears: 5, cylinders: 4, rpmScale: 1, sound: false, numbers: true, record: false };
+  const DEFAULTS = { mode: 'eco', ecoTarget: 2500, redline: 6500, nGears: 5, cylinders: 4, rpmScale: 1, sound: false, numbers: true, record: false, cup: true };
   let settings = Object.assign({}, DEFAULTS, LS.get('settings', {}));
   let gearModel = E.GearModel.fromJSON(LS.get('gears', null), settings.nGears);
   let session = LS.get('session', null);
@@ -1468,6 +1510,8 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
   function enterStage(kind) {
     $('stage').hidden = false; $('demo-tag').hidden = kind !== 'demo';
     $('stage').classList.toggle('hide-num', !settings.numbers);
+    $('stage').classList.toggle('no-cup', settings.cup === false);
+    resetCup();
     pillsKey = ''; ['s-mic', 's-gps', 's-mot'].forEach(id => { $(id).dataset.st = ''; });
     $('d-mode').textContent = settings.mode === 'sport' ? 'ספורטיבי' : 'חסכוני';
     document.body.style.overflow = 'hidden';
@@ -1510,6 +1554,51 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     return { smooth: 0, ok: 4, harsh: 11 }[ev.smooth] || 0;
   }
   resetColour();
+
+  // ---------- coffee cup ----------
+  // The surface is a damped slosh mode driven by longitudinal acceleration (tilt), plus ripples from jerk above
+  // the road's usual level. A harsh jolt (same threshold as the 'harsh' grade) or a surface that reaches the rim
+  // throws drops over the high side. Cup interior: x 8..112, y 10 (rim) .. 117 (bottom); resting level y = 42.
+  const CUP = { level: 42, w: 2 * Math.PI * 1.1, zeta: 0.22, gain: 0.085, maxTilt: 0.5 };
+  let cup = null;
+  function resetCup() { cup = { th: 0, v: 0, rip: 0, ph: 0, drops: [], spillT: -9, t: null }; $('cup-drops').textContent = ''; }
+  resetCup();
+  function stepCup(t, ms) {
+    if (!cup) return;
+    const dt = cup.t == null ? 0 : Math.min(0.1, Math.max(0, t - cup.t)); cup.t = t;
+    $('cupbox').classList.toggle('idle', !ms || !ms.fresh);
+    // braking tilts the surface up at the front (left), accelerating up at the back (right, the handle side)
+    const target = ms && ms.a != null ? Math.max(-CUP.maxTilt, Math.min(CUP.maxTilt, -ms.a * CUP.gain)) : 0;
+    for (let k = 0, n = Math.ceil(dt / (1 / 120)); k < n; k++) {
+      const h = dt / n;
+      cup.v += (CUP.w * CUP.w * (target - cup.th) - 2 * CUP.zeta * CUP.w * cup.v) * h;
+      cup.th += cup.v * h;
+    }
+    const excess = ms ? Math.max(0, ms.j - ms.base) : 0;
+    cup.rip = Math.max(cup.rip * Math.exp(-dt / 0.35), Math.min(16, excess * 1.1));
+    cup.ph += dt * 2 * Math.PI * 2.2;
+    const slope = Math.tan(cup.th), edgeRise = Math.abs(slope) * 52 + cup.rip;
+    if ((excess >= 10 || edgeRise > CUP.level - 12) && t - cup.spillT > 0.6 && !reduceMotion) {
+      cup.spillT = t;
+      const side = slope > 0 ? -1 : 1;  // the high edge
+      for (let i = 0; i < 7; i++) cup.drops.push({ x: side > 0 ? 108 : 12, y: 10, vx: side * (40 + Math.random() * 90), vy: -(90 + Math.random() * 120), r: 2.5 + Math.random() * 3.5, age: 0 });
+    }
+    let d = '';
+    for (let x = 0; x <= 120; x += 4) {
+      const y = CUP.level + slope * (x - 60) + cup.rip * Math.sin(x / 8 - cup.ph) * 0.8;
+      d += `${x ? 'L' : 'M'}${x} ${Math.max(2, y).toFixed(1)}`;
+    }
+    $('cup-liq').setAttribute('d', d + ' L120 130 L0 130 Z');
+    const g = $('cup-drops');
+    cup.drops = cup.drops.filter(p => (p.age += dt) < 1.1 && p.y < 150);
+    while (g.childNodes.length < cup.drops.length) { const c = document.createElementNS(SVGNS, 'circle'); c.setAttribute('class', 'drop'); g.appendChild(c); }
+    while (g.childNodes.length > cup.drops.length) g.lastChild.remove();
+    cup.drops.forEach((p, i) => {
+      p.vy += 520 * dt; p.x += p.vx * dt; p.y += p.vy * dt;
+      const c = g.childNodes[i]; c.setAttribute('cx', p.x.toFixed(1)); c.setAttribute('cy', p.y.toFixed(1)); c.setAttribute('r', p.r.toFixed(1));
+      c.style.opacity = String(Math.max(0, 1 - p.age / 1.1));
+    });
+  }
 
   // one pill per gear; lit once that gear has been learned
   let pillsKey = '';
@@ -1593,6 +1682,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     const lvl = sens.mic === 'ok' && sens.level != null ? Math.max(0.06, Math.min(1, sens.level)) : 0;
     $('s-mic').querySelector('.lvl circle').style.strokeDasharray = `${(lvl * 100).toFixed(1)} 200`;
     drawGearPills(run.coach.gears.gears.map(g => g.n));
+    if (settings.cup !== false) stepCup(t, run.coach.motionState(t));
     requestAnimationFrame(frame);
   }
 
@@ -1625,7 +1715,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     const step = Math.max(1, Math.ceil(tr.length / 2400));
     return {
       source, date: new Date().toISOString(), th: coach.th, nGears: settings.nGears,
-      events: coach.events.map(e => ({ kind: e.kind || 'up', t: e.t, from: e.from, to: e.to, before: e.before, after: e.after, grade: e.grade, smooth: e.smooth, jerk: e.jerk, jerkBase: e.jerkBase, axis: e.axis, revDrop: e.revDrop, duration: e.duration, smoothSrc: e.smoothSrc })),
+      events: coach.events.map(e => ({ kind: e.kind || 'up', t: e.t, from: e.from, to: e.to, before: e.before, after: e.after, grade: e.grade, smooth: e.smooth, jerk: e.jerk, jerkBase: e.jerkBase, axis: e.axis, trace: e.trace, revDrop: e.revDrop, duration: e.duration, smoothSrc: e.smoothSrc })),
       trace: tr.filter((_, i) => i % step === 0).map(p => [Math.round(p.t * 10) / 10, p.rpm]),
       summary: coach.summary()
     };
@@ -1833,7 +1923,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
         synth.render(block, sim.rpm, sim.load, sim.kmh);
         buf.copyWithin(0, sub); buf.set(block, n - sub);
         lagQ.push([simT, sim.kmh]); while (lagQ.length && lagQ[0][0] < simT - 2) lagQ.shift();
-        while (nextMot <= simT) { coach.motion(nextMot, 0.04 * (Math.random() - 0.5), sim.longAccel() + 0.1 * (Math.random() - 0.5), 0.04 * (Math.random() - 0.5)); nextMot += 1 / 60; }
+        while (nextMot <= simT) { coach.motion(nextMot, 0.04 * (Math.random() - 0.5), sim.longAccel() + 0.1 * (Math.random() - 0.5), 0.04 * (Math.random() - 0.5), 0, 0, 9.81); nextMot += 1 / 60; }  // phone lying flat
         if (simT >= nextGps) {
           const old = lagQ.find(q => q[0] >= simT - 0.4) || lagQ[0];
           coach.gpsFix(simT, Math.max(0, old[1] + (Math.random() - 0.5) * 0.6));
@@ -2006,6 +2096,8 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
           <div><span class="l">${e.smoothSrc === 'motion' ? 'טלטלה (m/s³)' : 'פער סל"ד מהיעד'}</span><span class="v num">${e.smoothSrc === 'motion' ? (e.jerk != null ? e.jerk + (e.jerkBase ? ` (כביש ${e.jerkBase})` : '') : '–') : (e.revDrop != null ? e.revDrop + '%' : '–')}</span></div>
           <div><span class="l">זמן בנסיעה</span><span class="v num">${mm}:${ss}</span></div>`;
         mcard.appendChild(det);
+        if (e.trace && e.smoothSrc === 'motion' && e.trace.j && e.trace.j.length > 5) mcard.appendChild(jerkChart(e));
+        else if (e.smooth) { const n = document.createElement('p'); n.className = 'small muted'; n.textContent = 'בלי חיישן תנועה, החלקות נקבעה לפי הסל"ד (כמה הוא צנח מתחת ליעד וכמה זמן ההעברה לקחה).'; mcard.appendChild(n); }
       }
     }
     w.appendChild(mcard);
@@ -2031,6 +2123,39 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
       w.appendChild(cc);
       requestAnimationFrame(() => drawChart($('chart'), s));
     }
+  }
+
+  // why this grade: jerk around the shift on green / yellow / red bands (5 and 10 m/s³ above the road's usual level),
+  // the road level dashed, the scoring window shaded, the moment that set the grade marked; rpm as a thin line on top
+  function jerkChart(e) {
+    const tr = e.trace, base = e.jerkBase || 0, W = 340, H = 170, top = 38, bot = H - 18;
+    const t0 = Math.min(tr.w[0], tr.j[0][0]), t1 = Math.max(tr.w[1], tr.j[tr.j.length - 1][0]);
+    const x = (t) => ((t - t0) / (t1 - t0 || 1)) * W;
+    const inWin = tr.j.filter(q => q[0] >= tr.w[0] && q[0] <= tr.w[1]);
+    const pk = (inWin.length ? inWin : tr.j).reduce((b, q) => q[1] > b[1] ? q : b);
+    const yMax = Math.max(base + 14, pk[1] * 1.15), y = (j) => bot - (Math.min(j, yMax) / yMax) * (bot - top);
+    const band = (a, b, c) => { const y1 = y(Math.min(yMax, base + b)), y0 = y(base + a); return y0 > y1 ? `<rect x="0" y="${y1.toFixed(1)}" width="${W}" height="${(y0 - y1).toFixed(1)}" fill="var(--${c})" opacity=".13"/>` : ''; };
+    const line = (pts, fx, fy) => { let d = '', pen = false; for (const q of pts) { if (q[1] == null) { pen = false; continue; } d += `${pen ? 'L' : 'M'}${fx(q[0]).toFixed(1)} ${fy(q[1]).toFixed(1)}`; pen = true; } return d; };
+    const rp = (tr.rpm || []).filter(q => q[1]); let rLine = '';
+    if (rp.length > 3) { const lo = Math.min(...rp.map(q => q[1])), hi = Math.max(...rp.map(q => q[1])); rLine = `<path d="${line(tr.rpm, x, v => 6 + (1 - (v - lo) / ((hi - lo) || 1)) * 24)}" fill="none" stroke="var(--muted)" stroke-width="1.5" opacity=".8"/>`; }
+    const sc = SMOOTH_KEY[e.smooth] || 'fg', lx = Math.min(W - 70, x(pk[0]) + 8);
+    const box = document.createElement('div');
+    box.className = 'jchart';
+    box.innerHTML = `<h3>למה ${e.smooth ? SMOOTH_WORD[e.smooth] : ''}?</h3>
+      <svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="טלטלה בזמן ההעברה: שיא ${pk[1]} m/s³, רעש כביש ${base}">
+        ${band(0, 5, 'good')}${band(5, 10, 'slight')}${band(10, 1e9, 'late')}
+        <rect x="${x(tr.w[0]).toFixed(1)}" y="${top - 4}" width="${(x(tr.w[1]) - x(tr.w[0])).toFixed(1)}" height="${bot - top + 4}" fill="var(--fg)" opacity=".05"/>
+        ${rLine}
+        <line x1="0" x2="${W}" y1="${y(base).toFixed(1)}" y2="${y(base).toFixed(1)}" stroke="var(--muted)" stroke-dasharray="4 4"/>
+        <path d="${line(tr.j, x, y)}" fill="none" stroke="var(--fg)" stroke-width="2" stroke-linejoin="round"/>
+        <circle cx="${x(pk[0]).toFixed(1)}" cy="${y(pk[1]).toFixed(1)}" r="5" fill="var(--${sc})" stroke="var(--surface)" stroke-width="2"/>
+        <text x="${lx.toFixed(1)}" y="${(y(pk[1]) + 4).toFixed(1)}" fill="var(--fg)" font-size="12" style="direction:ltr;unicode-bidi:isolate">${pk[1].toFixed(1)} m/s³</text>
+        <line x1="${x(0).toFixed(1)}" x2="${x(0).toFixed(1)}" y1="${bot}" y2="${bot + 5}" stroke="var(--muted)"/>
+        <text x="${x(0).toFixed(1)}" y="${H - 2}" fill="var(--muted)" font-size="10" text-anchor="middle">${e.kind === 'launch' ? 'יציאה' : e.kind === 'down' ? 'קלאץ\'' : 'שיא הסל"ד'}</text>
+      </svg>
+      <div class="jlegend"><span class="l-j">טלטלה</span><span class="l-b">רעש הכביש (${base})</span><span class="l-r">סל"ד</span><span class="l-w">החלון שנמדד</span></div>
+      <p class="small muted">הציון נקבע לפי השיא בתוך החלון, מעל רעש הכביש: ירוק עד 5, צהוב עד 10, אדום מעל.</p>`;
+    return box;
   }
 
   function drawChart(cv, s) {
@@ -2092,7 +2217,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     const ts = E.thresholds(Object.assign({}, settings, { mode: 'sport' }));
     $('eco-desc').textContent = `בזמן: ${fmt(te.goodLo)}–${fmt(te.goodHi)}. מוקדם: מתחת ל-${fmt(te.goodLo)}, או אם אחרי ההעברה המנוע ירד מתחת ל-${fmt(te.lug)}.`;
     $('red-desc').textContent = `בספורטיבי, בזמן: ${fmt(ts.goodLo)}–${fmt(ts.goodHi)}.`;
-    $('in-sound').checked = !!settings.sound; $('in-nums').checked = !!settings.numbers; $('in-record').checked = !!settings.record;
+    $('in-sound').checked = !!settings.sound; $('in-nums').checked = !!settings.numbers; $('in-record').checked = !!settings.record; $('in-cup').checked = settings.cup !== false;
     const gs = gearModel.solve();
     $('gear-status').textContent = gs.length
       ? (gearModel.complete ? `כל ${settings.nGears} ההילוכים נלמדו. הצבעים יודעים עכשיו גם באיזה הילוך אתה.` : `נלמדו ${gs.length} מתוך ${settings.nGears}. ממשיך ללמוד בכל נסיעה.`)
@@ -2128,6 +2253,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
   $('in-red').addEventListener('input', (e) => { settings.redline = +e.target.value; saveSettings(); renderSettings(); });
   $('in-sound').addEventListener('change', (e) => { settings.sound = e.target.checked; saveSettings(); });
   $('in-record').addEventListener('change', (e) => { settings.record = e.target.checked; saveSettings(); });
+  $('in-cup').addEventListener('change', (e) => { settings.cup = e.target.checked; saveSettings(); });
   $('in-nums').addEventListener('change', (e) => { settings.numbers = e.target.checked; saveSettings(); });
   window.addEventListener('resize', () => { if (!$('view-summary').hidden && session) drawChart($('chart'), session); });
 
