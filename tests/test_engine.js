@@ -78,6 +78,22 @@ function run({ noise = 1, mode = 'eco', seconds = 130, useGps = true, useMotion 
 const args = process.argv.slice(2);
 if (args[0] === 'v') {
   console.log(run({ noise: +(args[1] || 1), mode: args[2] || 'eco', verbose: true, useGps: args[3] !== 'nogps' }));
+} else if (args[0] === 'motion') {
+  // טלפון מוטה 30°: מהמורה אנכית צריכה להיעלם, דחיפה אופקית צריכה להישאר
+  const peak = (kind, withG) => {
+    const c = new E.Coach({ mode: 'eco', ecoTarget: 2500, redline: 6500, nGears: 5, cylinders: 4 }, new E.GearModel(5));
+    const th = Math.PI / 6, up = [0, Math.sin(th), Math.cos(th)], fwd = [0, Math.cos(th), -Math.sin(th)];
+    const dir = kind === 'bump' ? up : fwd;
+    for (let i = 0; i < 600; i++) {
+      const t = i / 60, s = (t > 5 && t < 5.15) ? 4 * Math.sin((t - 5) / 0.15 * Math.PI) : 0;
+      const a = dir.map(v => v * s);
+      if (withG) c.motion(t, a[0], a[1], a[2], up[0] * 9.81, up[1] * 9.81, up[2] * 9.81); else c.motion(t, a[0], a[1], a[2]);
+    }
+    return Math.max(...c.jerk.map(e => e.j));
+  };
+  const r = { bumpNoG: peak('bump', false), bumpG: peak('bump', true), kickG: peak('kick', true) };
+  for (const k in r) r[k] = Math.round(r[k] * 100) / 100;
+  console.log(r, r.bumpG < 0.1 && r.kickG > 5 ? 'PASS' : 'FAIL');
 } else if (args[0] === 'grid3') {
   for (const to of [{}, {contFloor:0.15}, {contFloor:0.08}]) for (const mode of ['eco','sport']) for (const noise of [1,2]) {
     const r = run({ noise, mode, to });

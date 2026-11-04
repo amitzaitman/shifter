@@ -631,11 +631,16 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
       const onMotion = (e) => {
         const now = performance.now() / 1000;
         let a = e.acceleration;
-        if (a && a.x != null) { coach.motion(now, a.x, a.y, a.z); motLast = now; return; }
-        const g = e.accelerationIncludingGravity; if (!g || g.x == null) return;
+        const g = e.accelerationIncludingGravity, hasG = g && g.x != null;
+        if (a && a.x != null) {
+          if (hasG) coach.motion(now, a.x, a.y, a.z, g.x - a.x, g.y - a.y, g.z - a.z);
+          else coach.motion(now, a.x, a.y, a.z);
+          motLast = now; return;
+        }
+        if (!hasG) return;
         if (!hp) hp = [g.x, g.y, g.z];
         for (let i = 0; i < 3; i++) hp[i] += 0.02 * ([g.x, g.y, g.z][i] - hp[i]);
-        coach.motion(now, g.x - hp[0], g.y - hp[1], g.z - hp[2]); motLast = now;
+        coach.motion(now, g.x - hp[0], g.y - hp[1], g.z - hp[2], hp[0], hp[1], hp[2]); motLast = now;
       };
       if (mot.value !== 'denied') window.addEventListener('devicemotion', onMotion);
       let saveT = 0;

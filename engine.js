@@ -314,7 +314,7 @@
       this.hist = []; this.gps = [];
       this.lagCands = [0, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2];
       this.lagScore = this.lagCands.map(() => 0); this.lagN = 0; this.lag = 0.4;
-      this.jerk = []; this.lp = null; this.lastMotion = null;
+      this.jerk = []; this.lp = null; this.lastMotion = null; this.gv = null;
       this.state = 'track'; this.drop = null; this.refractUntil = 0;
       this.events = []; this.pending = [];
       this.lowSince = null; this.trace = []; this.lastTraceT = -1e9; this.startT = null;
@@ -374,9 +374,21 @@
       }
       if (curStat && curStat.agree >= 0.7) { this.gears.add(curStat.med, curStat.agree * curStat.n / 12); this.gears.solve(); }
     }
-    motion(t, ax, ay, az) {
+    // ax..az: תאוצה בלי כבידה. gx..gz (לא חובה): וקטור הכבידה, משמש להסרת הרכיב האנכי (מהמורות)
+    motion(t, ax, ay, az, gx, gy, gz) {
       if (!(isFinite(ax) && isFinite(ay) && isFinite(az))) return;
       this.hasMotion = true;
+      if (isFinite(gx) && isFinite(gy) && isFinite(gz)) {
+        const dtg = this.lastMotion != null ? Math.max(0, t - this.lastMotion) : 1;
+        const b = Math.min(1, dtg / 2);   // ממוצע איטי (~2 שנ') של כיוון הכבידה
+        this.gv = this.gv ? [this.gv[0] + b * (gx - this.gv[0]), this.gv[1] + b * (gy - this.gv[1]), this.gv[2] + b * (gz - this.gv[2])] : [gx, gy, gz];
+      }
+      const gn = this.gv ? Math.hypot(this.gv[0], this.gv[1], this.gv[2]) : 0;
+      if (gn > 3) {                       // רק אם הכבידה הגיונית (~9.8)
+        const ux = this.gv[0] / gn, uy = this.gv[1] / gn, uz = this.gv[2] / gn;
+        const d = ax * ux + ay * uy + az * uz;
+        ax -= d * ux; ay -= d * uy; az -= d * uz;
+      }
       if (!this.lp) { this.lp = [ax, ay, az]; this.lastMotion = t; return; }
       const dt = t - this.lastMotion; if (dt <= 0) return;
       const a = Math.min(1, dt / 0.12);
