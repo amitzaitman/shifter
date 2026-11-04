@@ -122,8 +122,7 @@ label.btn { position: relative; }
 /* ---------- driving stage ---------- */
 #stage {
   position: fixed; inset: 0; z-index: 20;
-  background: var(--fill);
-  transition: background-color .35s ease;
+  background: var(--fill); /* colour is eased in JS, frame by frame */
   display: flex; flex-direction: column;
   padding-top: env(safe-area-inset-top, 0px);
   padding-bottom: env(safe-area-inset-bottom, 0px);
@@ -134,7 +133,6 @@ label.btn { position: relative; }
   content: ""; position: absolute; pointer-events: none;
   inset: calc(env(safe-area-inset-top, 0px) + 6px) calc(env(safe-area-inset-right, 0px) + 6px) calc(env(safe-area-inset-bottom, 0px) + 6px) calc(env(safe-area-inset-left, 0px) + 6px);
   border: var(--frame-w) solid var(--frame); border-radius: 28px;
-  transition: border-color .25s ease;
 }
 #stage.pulse::after { animation: pulse .42s infinite alternate ease-in-out; }
 #stage.pulse { animation: pulseFill .42s infinite alternate ease-in-out; }
@@ -913,7 +911,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
       const lowCond = rpm != null && rpm < th.lug && rpm > 950 && (kmh == null || kmh > 8) && !(gear === 1);
       if (lowCond) { if (this.lowSince == null) this.lowSince = t; if (t - this.lowSince > 1.2) state = 'low'; }
       else this.lowSince = null;
-      return { rpm, kmh, gear, state, th, gearsFound: this.gears.gears.length, gearsComplete: this.gears.complete };
+      return { rpm, kmh, gear, top, state, th, gearsFound: this.gears.gears.length, gearsComplete: this.gears.complete };
     }
     summary() {
       const ev = this.events;
@@ -1171,31 +1169,68 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     $('stage').classList.toggle('hide-num', !settings.numbers);
     $('d-mode').textContent = settings.mode === 'sport' ? 'ספורטיבי' : 'חסכוני';
     document.body.style.overflow = 'hidden';
-    feedback = null;
+    feedback = null; resetColour();
     requestAnimationFrame(frame);
   }
 
-  let lastLiveState = null;
+  // ---------- continuous colour ----------
+  // Frame follows a smoothed rpm along a gradient (dim green → yellow → blue → red).
+  // A grade snaps in (~0.1 s) and fades back out slowly; the shift pulse has hysteresis so noisy rpm doesn't flicker it.
+  const cssv = getComputedStyle(document.documentElement);
+  const C = {};
+  for (const n of ['bg', 'surface', 'line', 'good', 'slight', 'accent', 'late', 'early']) {
+    const h = cssv.getPropertyValue('--' + n).trim().replace('#', '');
+    C[n] = [0, 2, 4].map(i => parseInt(h.substr(i, 2), 16));
+  }
+  const mixc = (a, b, k) => a.map((v, i) => v + (b[i] - v) * k);
+  const dim = (c, k) => mixc(C.bg, c, k);
+  const rgb = (c) => `rgb(${c.map(Math.round).join(',')})`;
+  const RPM_TAU = 0.3, LIVE_TAU = 0.08, SNAP_TAU = 0.04, FADE_TAU = 0.45, FADE_FOR = 0.9, PULSE_HYST = 120;
+  function liveColor(rpm, th) {
+    const stops = [[th.ledLo, dim(C.good, 0.2)], [th.near, dim(C.good, 0.6)], [(th.near + th.prompt) / 2, C.slight],
+                   [th.prompt, C.accent], [th.goodHi, C.accent], [th.goodHi + 250, C.late]];
+    if (rpm <= stops[0][0]) return stops[0][1];
+    for (let i = 1; i < stops.length; i++) {
+      const [a, ca] = stops[i - 1], [b, cb] = stops[i];
+      if (rpm <= b) return mixc(ca, cb, (rpm - a) / (b - a || 1));
+    }
+    return C.late;
+  }
+  let col = null;
+  function resetColour() { col = { fr: null, fi: null, rpm: null, t: null, pulse: false, fbEnd: -1e9 }; }
+  resetColour();
+
   function frame() {
     if (!run) return;
     const t = run.clock();
     const L = run.coach.live(t);
     const st = $('stage');
-    let fr, fi, pulse = false;
+    const dt = col.t == null ? 0 : Math.min(0.25, Math.max(0, t - col.t)); col.t = t;
+    col.rpm = L.rpm == null ? null : col.rpm == null ? L.rpm : col.rpm + (L.rpm - col.rpm) * (1 - Math.exp(-dt / RPM_TAU));
+    const r = col.rpm, th = L.th;
+    let fr, fi, tau;
     if (feedback && t < feedback.until) {
-      fr = GRADE_COLOR[feedback.ev.grade];
-      fi = feedback.ev.smooth ? fillOf(feedback.ev.smooth) : 'var(--surface)';
+      fr = C[feedback.ev.grade];
+      fi = feedback.ev.smooth ? dim(C[SMOOTH_KEY[feedback.ev.smooth]], 0.72) : C.surface;
+      tau = SNAP_TAU; col.pulse = false; col.fbEnd = t;
     } else {
       feedback = null;
-      fi = 'var(--bg)';
-      fr = { ok: 'color-mix(in oklab, var(--good) 45%, var(--bg))', near: 'var(--slight)', shift: 'var(--accent)', late: 'var(--late)', low: 'var(--early)', nosignal: 'var(--line)' }[L.state];
-      pulse = L.state === 'shift';
+      fi = C.bg;
+      tau = t - col.fbEnd < FADE_FOR ? FADE_TAU : LIVE_TAU;
+      if (L.state === 'nosignal' || r == null) fr = C.line;
+      else if (L.state === 'low') fr = C.early;
+      else if (L.top) fr = dim(C.good, 0.45);
+      else fr = liveColor(r, th);
+      if (r == null || L.top || L.state === 'low') col.pulse = false;
+      else if (!col.pulse && r >= th.prompt && r <= th.goodHi) { col.pulse = true; beep('shift'); }
+      else if (col.pulse && (r < th.prompt - PULSE_HYST || r > th.goodHi + PULSE_HYST)) col.pulse = false;
     }
-    if (L.state === 'shift' && lastLiveState !== 'shift' && !feedback) beep('shift');
-    lastLiveState = L.state;
-    st.style.setProperty('--frame', fr);
-    st.style.setProperty('--fill', fi);
-    st.classList.toggle('pulse', pulse);
+    const k = col.fr == null ? 1 : 1 - Math.exp(-dt / tau);
+    col.fr = col.fr == null ? fr : mixc(col.fr, fr, k);
+    col.fi = col.fi == null ? fi : mixc(col.fi, fi, k);
+    st.style.setProperty('--frame', rgb(col.fr));
+    st.style.setProperty('--fill', rgb(col.fi));
+    st.classList.toggle('pulse', col.pulse);
     drawLeds(L.rpm, L.th);
     $('d-gear').textContent = L.gear != null ? L.gear : '';
     $('d-rpm').textContent = L.rpm != null ? fmt(Math.round(L.rpm / 10) * 10) : '----';

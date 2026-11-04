@@ -519,7 +519,7 @@
       const lowCond = rpm != null && rpm < th.lug && rpm > 950 && (kmh == null || kmh > 8) && !(gear === 1);
       if (lowCond) { if (this.lowSince == null) this.lowSince = t; if (t - this.lowSince > 1.2) state = 'low'; }
       else this.lowSince = null;
-      return { rpm, kmh, gear, state, th, gearsFound: this.gears.gears.length, gearsComplete: this.gears.complete };
+      return { rpm, kmh, gear, top, state, th, gearsFound: this.gears.gears.length, gearsComplete: this.gears.complete };
     }
     summary() {
       const ev = this.events;
