@@ -23,6 +23,7 @@
   --frame: var(--line);
   --fill: var(--bg);
   --frame-w: clamp(14px, 4.2vmin, 30px);
+  --bar-w: clamp(24px, 7.5vmin, 52px);
   --coffee: #c8925f;
   color-scheme: dark;
 }
@@ -137,31 +138,26 @@ label.btn { position: relative; }
   bottom: calc(env(safe-area-inset-bottom, 0px) + 6px); left: calc(env(safe-area-inset-left, 0px) + 6px);
 }
 #bar { display: block; width: 100%; height: 100%; overflow: visible; }
-#bar path { fill: none; stroke-width: var(--frame-w); }
+#bar path { fill: none; stroke-width: var(--bar-w); }
+#bar .glow { stroke-width: calc(var(--bar-w) * 2.4); opacity: .55; }
 #bar .track { stroke: var(--raise); }
 #bar .zone { stroke: color-mix(in oklab, var(--fg) 30%, var(--raise)); }
-#bar .mark { stroke: var(--fg); stroke-linecap: round; stroke-width: calc(var(--frame-w) * 1.5); }
+#bar .mark { stroke: var(--fg); stroke-linecap: round; stroke-width: calc(var(--bar-w) * 1.3); }
 @media (prefers-reduced-motion: reduce) {
   .hero-tile, .hero-tile .f { animation: none; }
   .hero-tile .f { stroke-dashoffset: 30; stroke: var(--good); }
 }
 .topbar { display: flex; align-items: center; justify-content: space-between; gap: 10px;
-  margin: calc(var(--frame-w) + 16px) calc(var(--frame-w) + 18px) 0; }
-/* readable at a glance from a mount: a huge gear, a big rpm, speed below. Shadow keeps them legible on any feedback colour. */
-.dash { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0; padding: 0 calc(var(--frame-w) + 20px); min-height: 0;
-  text-shadow: 0 2px 18px color-mix(in oklab, var(--bg) 55%, transparent); }
-.gear { font-family: var(--font-num); font-weight: 700; font-size: min(38vh, 80vw); line-height: 0.82; color: color-mix(in oklab, var(--fg) 92%, transparent); font-variant-numeric: tabular-nums; }
-.rpm { font-family: var(--font-num); font-weight: 600; font-size: clamp(44px, min(10vh, 16vw), 104px); line-height: 1; color: color-mix(in oklab, var(--fg) 85%, transparent); font-variant-numeric: tabular-nums; }
-.kmh { font-family: var(--font-num); font-weight: 500; font-size: clamp(24px, min(4.6vh, 7.5vw), 46px); line-height: 1.2; margin-top: 4px; color: color-mix(in oklab, var(--fg) 62%, transparent); font-variant-numeric: tabular-nums; }
-.rpm span, .kmh span { direction: ltr; unicode-bidi: isolate; }
-.rpm small, .kmh small { font-family: var(--font-body); font-weight: 500; font-size: 0.36em; margin-inline-start: 0.35em; color: color-mix(in oklab, var(--fg) 55%, transparent); letter-spacing: .02em; }
-/* until the gears are learned there is no gear number: rpm takes the hero spot */
-.dash.no-gear .gear { display: none; }
-.dash.no-gear .rpm { font-size: clamp(64px, min(17vh, 26vw), 170px); }
-.hide-num .gear, .hide-num .rpm, .hide-num .kmh { visibility: hidden; }
+  margin: calc(var(--bar-w) + 12px) calc(var(--bar-w) + 14px) 0; }
+/* the cup is the centrepiece; the gear sits above it, readable but quiet. Shadow keeps it legible on any feedback colour. */
+.dash { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1vh; min-height: 0;
+  padding: 0 calc(var(--bar-w) + 16px); text-shadow: 0 2px 18px color-mix(in oklab, var(--bg) 55%, transparent); }
+.gear { flex: none; font-family: var(--font-num); font-weight: 700; font-size: clamp(56px, min(13vh, 24vw), 140px); line-height: .9; color: color-mix(in oklab, var(--fg) 72%, transparent); font-variant-numeric: tabular-nums; }
+.gear:empty { display: none; }
+.hide-num .gear { display: none; }
 /* coffee cup: the liquid tilts with acceleration, ripples on a jolt and spills on a harsh one */
-.cupbox { flex: none; display: flex; justify-content: center; height: clamp(70px, 17vh, 150px); margin: 0 0 8px; pointer-events: none; }
-.cupbox svg { height: 100%; width: auto; overflow: visible; }
+.cupbox { flex: 0 1 auto; display: flex; justify-content: center; width: 100%; height: min(48vh, 92vw); min-height: 90px; pointer-events: none; }
+.cupbox svg { height: 100%; width: 100%; overflow: visible; }
 .cupbox .rim { fill: none; stroke: color-mix(in oklab, var(--fg) 72%, transparent); stroke-width: 5; stroke-linejoin: round; stroke-linecap: round; }
 .cupbox .liq { fill: var(--coffee); }
 .cupbox .drop { fill: var(--coffee); }
@@ -358,7 +354,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
       </div>
       <div class="card">
         <div class="switch"><label for="in-sound">צפצוף כשצריך להעביר</label><input type="checkbox" id="in-sound"></div>
-        <div class="switch"><label for="in-nums">להציג סל"ד והילוך על המסך</label><input type="checkbox" id="in-nums" checked></div>
+        <div class="switch"><label for="in-nums">להציג את מספר ההילוך על המסך</label><input type="checkbox" id="in-nums" checked></div>
         <div class="switch"><label for="in-cup">כוס קפה שמראה את התאוצה בזמן נסיעה</label><input type="checkbox" id="in-cup" checked></div>
         <div class="switch"><label for="in-record">לשמור הקלטה של כל נסיעה (קול, GPS ותאוצה), בשביל כיול</label><input type="checkbox" id="in-record"></div>
         <p class="small muted">ההקלטה כוללת את המיקום שלך. בסוף הנסיעה יופיע במסך הסיכום כפתור לשיתוף הקובץ. הקובץ לא נשמר בטלפון: אם תסגור את הדף לפני שתשתף, הוא יאבד.</p>
@@ -409,17 +405,15 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
   </div>
   <div class="dash" id="dash">
     <div class="gear" id="d-gear"></div>
-    <div class="rpm"><span id="d-rpm">----</span><small>סל"ד</small></div>
-    <div class="kmh"><span id="d-kmh">--</span><small>קמ"ש</small></div>
-  </div>
-  <div class="cupbox" id="cupbox" aria-hidden="true">
-    <svg viewBox="-34 -46 192 176">
-      <defs><clipPath id="cup-in"><path d="M8 10 H112 L103 108 Q101 117 92 117 H28 Q19 117 17 108 Z"/></clipPath></defs>
-      <g clip-path="url(#cup-in)"><path class="liq" id="cup-liq" d="M0 40 H120 V130 H0 Z"/></g>
-      <g id="cup-drops"></g>
-      <path class="rim" d="M8 10 H112 L103 108 Q101 117 92 117 H28 Q19 117 17 108 Z"/>
-      <path class="rim" d="M110 32 q24 4 20 27 q-3 17 -24 17"/>
-    </svg>
+    <div class="cupbox" id="cupbox" aria-hidden="true">
+      <svg viewBox="-34 -46 192 176">
+        <defs><clipPath id="cup-in"><path d="M8 10 H112 L103 108 Q101 117 92 117 H28 Q19 117 17 108 Z"/></clipPath></defs>
+        <g clip-path="url(#cup-in)"><path class="liq" id="cup-liq" d="M0 40 H120 V130 H0 Z"/></g>
+        <g id="cup-drops"></g>
+        <path class="rim" d="M8 10 H112 L103 108 Q101 117 92 117 H28 Q19 117 17 108 Z"/>
+        <path class="rim" d="M110 32 q24 4 20 27 q-3 17 -24 17"/>
+      </svg>
+    </div>
   </div>
   <div class="dock">
     <div class="row" style="flex-wrap:nowrap">
@@ -1471,17 +1465,24 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     if (!r.width || (r.width === bar.w && r.height === bar.h)) return;
     bar.w = r.width; bar.h = r.height;
     svg.setAttribute('viewBox', `0 0 ${r.width} ${r.height}`);
-    const sw = parseFloat(getComputedStyle(svg.querySelector('path') || svg).strokeWidth) || parseFloat(getComputedStyle($('stage')).getPropertyValue('--frame-w')) || 20;
+    // measure the real stroke width from a probe path (the svg's own stroke-width is the 1px default)
+    const probe = document.createElementNS(SVGNS, 'path'); probe.setAttribute('class', 'track'); svg.appendChild(probe);
+    const sw = parseFloat(getComputedStyle(probe).strokeWidth) || 30; probe.remove();
     const i = sw / 2, w = r.width, h = r.height, c = w / 2, rr = Math.max(6, 28 - i);
     const half = {
       r: `M${c} ${h - i} H${w - i - rr} A${rr} ${rr} 0 0 0 ${w - i} ${h - i - rr} V${i + rr} A${rr} ${rr} 0 0 0 ${w - i - rr} ${i} H${c}`,
       l: `M${c} ${h - i} H${i + rr} A${rr} ${rr} 0 0 1 ${i} ${h - i - rr} V${i + rr} A${rr} ${rr} 0 0 1 ${i + rr} ${i} H${c}`
     };
     svg.textContent = '';
-    for (const name of ['track', 'zone', 'fill', 'mark']) {
+    // soft glow under the fill, bleeding inward (the outer half is off-screen)
+    const defs = document.createElementNS(SVGNS, 'defs');
+    defs.innerHTML = `<filter id="barglow" filterUnits="userSpaceOnUse" x="${-sw * 3}" y="${-sw * 3}" width="${w + sw * 6}" height="${h + sw * 6}"><feGaussianBlur stdDeviation="${(sw * 0.6).toFixed(1)}"/></filter>`;
+    svg.appendChild(defs);
+    for (const name of ['track', 'zone', 'glow', 'fill', 'mark']) {
       bar.layers[name] = ['r', 'l'].map(side => {
         const pth = document.createElementNS(SVGNS, 'path');
         pth.setAttribute('d', half[side]); pth.setAttribute('class', name);
+        if (name === 'glow') pth.setAttribute('filter', 'url(#barglow)');
         svg.appendChild(pth); return pth;
       });
     }
@@ -1665,6 +1666,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     seg('track', 0, 1);
     if (L.top) seg('zone', 0, 0); else seg('zone', barFrac(th.goodLo, th), 1);
     seg('fill', 0, barCol ? Math.max(0.02, barFrac(r, th)) : 0, barCol ? rgb(barCol) : null, flash);
+    seg('glow', 0, barCol ? Math.max(0.02, barFrac(r, th)) : 0, barCol ? rgb(barCol) : null, flash * 0.55);
 
     // after a shift (up, down or launch): the whole screen = smoothness, like a traffic light;
     // a dot on the bar = timing (upshifts only); a shake if it was harsh
@@ -1696,9 +1698,6 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     }
     st.style.transform = tx;
     $('d-gear').textContent = L.gear != null ? L.gear : '';
-    $('dash').classList.toggle('no-gear', L.gear == null);
-    $('d-rpm').textContent = L.rpm != null ? fmt(Math.round(L.rpm / 10) * 10) : '----';
-    $('d-kmh').textContent = L.kmh != null ? Math.round(L.kmh) : '--';
     const sens = run.sensors();
     const WORD = { ok: 'פעיל', wait: 'ממתין', bad: 'חסום' };
     for (const [id, k, name] of [['s-mic', 'mic', 'מיקרופון'], ['s-gps', 'gps', 'GPS'], ['s-mot', 'mot', 'חיישן תנועה']]) {
