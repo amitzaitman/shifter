@@ -202,6 +202,10 @@ label.btn { position: relative; }
 .sens.bad { --c: var(--late); }
 .sens.bad .slash { display: inline; }
 @keyframes sensWait { 50% { opacity: .45; } }
+/* motion sensor works, but the phone shakes in its mount: yellow and wiggling */
+.sens.shaky { --c: var(--slight); }
+.sens.shaky svg:not(.lvl) { animation: sensShake .5s ease-in-out infinite; }
+@keyframes sensShake { 25% { transform: translateX(-1.5px) rotate(-4deg); } 75% { transform: translateX(1.5px) rotate(4deg); } }
 /* mic level: a ring that fills with loudness */
 .sens .lvl { position: absolute; inset: -2px; width: auto; height: auto; transform: rotate(-90deg); }
 .sens .lvl circle { stroke: var(--c); stroke-width: 3; fill: none; stroke-dasharray: 0 200; transition: stroke-dasharray .12s linear; }
@@ -407,7 +411,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
         <h3>מה נמדד ואיך</h3>
         <p class="small muted">סל"ד: מהצליל של המנוע (תדר ההצתות). הילוך: יחס סל"ד למהירות מה-GPS, נלמד לבד אחרי כמה דקות נסיעה. חלקות: קפיצות בתאוצה מהחיישן של הטלפון, ובלי חיישן לפי כמה הסל"ד צנח לפני שהקלאץ' נתפס. זו גרסה ראשונה: הספים נקבעו מראש ועוד לא כוילו ברכב אמיתי.</p>
       </div>
-      <p class="small muted" style="text-align:center">גרסה <span class="num">04.11.2026 11:52</span></p>
+      <p class="small muted" style="text-align:center">גרסה <span class="num">04.11.2026 12:37</span></p>
     </div>
   </main>
 </div>
@@ -782,6 +786,10 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
       // ציר הנסיעה בתוך מישור הטלפון: S = Σ(תאוצת GPS × וקטור התאוצה הממוצע), W = Σ(תאוצת GPS²). PCA כגיבוי בלי GPS.
       this.accLog = []; this.axS = [0, 0, 0]; this.axW = 0; this.cov = null; this.pc = null; this.axisMode = 'all';
       this.fastA = null; this.fastA1 = null; this.fastJ = 0; this.fastBase = null; this.fastT = null; this.fastSrc = null; this._baseT = null; this._base = 0;
+      // מעמד: כמה הטלפון רועד כשהרכב עומד (RMS של התאוצה, m/s²). שינוי כיוון: וקטור הכבידה שלפיו נלמד הציר.
+      this.shake = null; this.shakeN = 0; this.gRef = null; this.remounts = 0; this.axM = 0;
+      // מדד ISO 2631 ‏Wd + VDV (נשמר באירועים לצד ה-jerk, להשוואה בנסיעה מסומנת)
+      this.wd = { x1: 0, x2: 0, y1: 0, y2: 0, lp: 0, t: null }; this.awLog = [];
       this.state = 'track'; this.drop = null; this.refractUntil = 0;
       this.events = []; this.pending = [];
       this.lowSince = null; this.trace = []; this.lastTraceT = -1e9; this.startT = null;
@@ -853,6 +861,13 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
         const dtg = this.lastMotion != null ? Math.max(0, t - this.lastMotion) : 1;
         const b = Math.min(1, dtg / 2);   // ממוצע איטי (~2 שנ') של כיוון הכבידה
         this.gv = this.gv ? [this.gv[0] + b * (gx - this.gv[0]), this.gv[1] + b * (gy - this.gv[1]), this.gv[2] + b * (gz - this.gv[2])] : [gx, gy, gz];
+        this.checkRemount();
+      }
+      // רעד המעמד: נמדד רק בעמידה (GPS מתחת ל-0.5 קמ"ש), אז כל תאוצה היא רעד של הטלפון ולא תנועה של הרכב
+      const gLast = this.hasGps && this.gps.length ? this.gps[this.gps.length - 1] : null;
+      if (gLast && gLast.kmh < 0.5 && t - gLast.t < 2) {
+        const e2 = ax * ax + ay * ay + az * az;
+        this.shakeN++; this.shake = this.shake == null ? e2 : this.shake + (e2 - this.shake) / Math.min(this.shakeN, 600);
       }
       const gn = this.gv ? Math.hypot(this.gv[0], this.gv[1], this.gv[2]) : 0;
       const horiz = gn > 3;               // רק אם הכבידה הגיונית (~9.8)
@@ -878,6 +893,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
       const j = Math.hypot(n2[0] - p2[0], n2[1] - p2[1], n2[2] - p2[2]) / dt;
       this.lp = q; this.lp2 = n2; this.lastMotion = t;
       this.jerk.push({ t, j });
+      if (mode !== 'all') this.wdStep(t, v[0]);
       while (this.jerk.length && this.jerk[0].t < t - 15) this.jerk.shift();
     }
     // מסלול מהיר לתצוגה בלבד (כוס הקפה): ישר מהחיישן, סינון קל של 40ms, בלי קשר לסינון של הציון (0.12 שנ').
@@ -908,6 +924,41 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
       this.fastA1 = n1; this.fastA = n; this.fastJ = jf;
       this.fastBase = this.fastBase == null ? jf : this.fastBase + Math.min(1, dt / 5) * (jf - this.fastBase);  // ~5 שנ'
     }
+    // הטלפון זז במעמד: כיוון הכבידה השתנה מהר ביותר מ-20° (הכיוון להשוואה עוקב לאט אחרי סחיפה). אז הציר הישן כבר לא נכון.
+    checkRemount() {
+      const g = this.gv, n = Math.hypot(g[0], g[1], g[2]); if (n < 3) return;
+      const u = g.map(v => v / n);
+      if (!this.gRef) { this.gRef = u; return; }
+      const cos = u[0] * this.gRef[0] + u[1] * this.gRef[1] + u[2] * this.gRef[2];
+      // the reference follows slow drift (~20 s), so only a quick change of the phone's tilt counts as a move
+      const k = 1 / (60 * 20); this.gRef = this.gRef.map((v, i) => v + k * (u[i] - v)); const rn = Math.hypot(...this.gRef); this.gRef = this.gRef.map(v => v / rn);
+      if (cos < Math.cos(20 * Math.PI / 180)) {
+        this.gRef = u; this.remounts++;
+        this.axS = [0, 0, 0]; this.axW = 0; this.axM = 0; this.cov = null; this.pc = null;
+        this.fastA = null; this.lp = null; this.lp2 = null;
+      }
+    }
+    // רעד המעמד ב-m/s² (RMS בעמידה), או null אם עוד לא נמדד מספיק (כ-3 שנ')
+    mountShake() { return this.shakeN >= 180 ? Math.sqrt(this.shake) : null; }
+    // ISO 2631-1 ‏Wd (אופקי), בקירוב: high-pass ‏Butterworth מסדר 2 ב-0.4Hz, ואז דעיכה מסדר 1 מעל 2Hz.
+    // התדרים שאדם מרגיש בישיבה מודגשים, והרעד המהיר של המעמד נחלש. מקדמים לפי dt, כי devicemotion לא בקצב קבוע.
+    wdStep(t, a) {
+      const w = this.wd, dt = w.t != null ? t - w.t : 0; w.t = t;
+      if (!(dt > 0 && dt < 0.2)) { w.x1 = w.x2 = a; w.y1 = w.y2 = 0; w.lp = 0; return; }
+      const K = Math.tan(Math.PI * 0.4 * dt), q = Math.SQRT1_2, nn = 1 / (1 + K / q + K * K);
+      const y = nn * (a - 2 * w.x1 + w.x2) - 2 * (K * K - 1) * nn * w.y1 - (1 - K / q + K * K) * nn * w.y2;
+      w.x2 = w.x1; w.x1 = a; w.y2 = w.y1; w.y1 = y;
+      w.lp += Math.min(1, dt * 2 * Math.PI * 2) * (y - w.lp);
+      this.awLog.push({ t, a: w.lp, dt });
+      while (this.awLog.length && this.awLog[0].t < t - 15) this.awLog.shift();
+    }
+    // VDV = (∫a_w⁴ dt)^¼ על החלון, ומה שהכביש היה נותן באותו משך (מ-10 השניות שלפני)
+    vdv(t0, t1) {
+      let s = 0, sb = 0, db = 0;
+      for (const e of this.awLog) { const a4 = e.a ** 4 * e.dt; if (e.t >= t0 && e.t <= t1) s += a4; else if (e.t >= t0 - 10 && e.t < t0 - 0.5) { sb += a4; db += e.dt; } }
+      const base = db > 3 ? sb * (t1 - t0) / db : null;
+      return s > 0 ? { v: Math.pow(s, 0.25), base: base != null ? Math.pow(base, 0.25) : null } : null;
+    }
     // כל זוג דגימות GPS: תאוצה לאורך הדרך (Δv/Δt) מול הממוצע של וקטור התאוצה האופקי באותו פרק זמן (אחרי תיקון ההשהיה).
     // הווקטור שמתואם הכי חזק עם תאוצת ה-GPS הוא ציר הנסיעה. שוכחים לאט (~50 שנ'), למקרה שהטלפון זז במעמד.
     learnAxis() {
@@ -920,7 +971,10 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
       if (n < 8) return;
       const k = 0.98;
       this.axS = this.axS.map((v, i) => v * k + ag * m[i] / n); this.axW = this.axW * k + ag * ag;
+      this.axM = this.axM * k + (m[0] * m[0] + m[1] * m[1] + m[2] * m[2]) / (n * n);
     }
+    // כמה הציר אמין: מתאם בין תאוצת ה-GPS לתאוצה לאורך הציר (0..1)
+    axisQuality() { const nS = Math.hypot(this.axS[0], this.axS[1], this.axS[2]); return this.axW > 0 && this.axM > 0 ? nS / Math.sqrt(this.axW * this.axM) : 0; }
     // בלי GPS: הכיוון שבו התאוצה האופקית משתנה הכי הרבה (בדרך כלל האצה ובלימה). פחות אמין: פניות מבלבלות אותו.
     learnPCA(t, x, y, z) {
       const k = 1 / (60 * 60);  // ~דקה של זיכרון ב-60Hz
@@ -939,7 +993,8 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
       if (this.hasGps) {
         // צריך מספיק אות: בערך עשר דגימות GPS עם תאוצה של 0.5 m/s²
         const nS = Math.hypot(this.axS[0], this.axS[1], this.axS[2]);
-        return this.axW > 2.5 && nS > 0 ? this.axS.map(v => v / nS) : null;
+        // וגם מתאם של 0.35 לפחות (כמו בטלמטיקה: לא מכיילים על נתונים שלא מסכימים)
+        return this.axW > 2.5 && nS > 0 && this.axisQuality() >= 0.35 ? this.axS.map(v => v / nS) : null;
       }
       return this.pc && this.cov && this.cov.w > 0.4 && (this.cov.c[0] + this.cov.c[1] + this.cov.c[2]) > 0.05 ? this.pc : null;
     }
@@ -1126,7 +1181,12 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
       if (!this.pending.length) return;
       this.pending = this.pending.filter(p => {
         if (t < p.t1) return true;
-        const j = this.maxJerk(p.t0, p.t1), base = this.s.jerkBaseline === false ? 0 : this.jerkBaseline(p.t0);
+        // לא נותנים ציון מהתאוצה לפני שציר הנסיעה אמין (בכל הכיוונים, פניות ורעד נספרים כטלטלה)
+        // (בלי וקטור כבידה בכלל אי אפשר ללמוד ציר, אז נשארים עם כל הכיוונים, כמו קודם)
+        const axisReady = this.axisMode !== 'all' || !this.gv || this.s.jerkAxis === false;
+        const j = axisReady ? this.maxJerk(p.t0, p.t1) : null, base = this.s.jerkBaseline === false ? 0 : this.jerkBaseline(p.t0);
+        const vd = axisReady ? this.vdv(p.t0, p.t1) : null;
+        if (vd) { p.ev.vdv = Math.round(vd.v * 100) / 100; p.ev.vdvBase = vd.base != null ? Math.round(vd.base * 100) / 100 : null; }
         // הציון לפי מה שמעל לרעש הרגיל של הכביש
         p.ev.jerk = j != null ? Math.round(j * 10) / 10 : null;
         p.ev.jerkBase = j != null ? Math.round(base * 10) / 10 : null;
@@ -1760,7 +1820,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     $('d-gear').textContent = L.gear != null ? L.gear : '';
     if (settings.showRpm) $('d-rpm').textContent = L.rpm != null ? fmt(Math.round(L.rpm / 10) * 10) : '----';
     const sens = run.sensors();
-    const WORD = { ok: 'פעיל', wait: 'ממתין', bad: 'חסום' };
+    const WORD = { ok: 'פעיל', wait: 'ממתין', bad: 'חסום', shaky: 'פעיל, אבל הטלפון רועד במעמד' };
     for (const [id, k, name] of [['s-mic', 'mic', 'מיקרופון'], ['s-gps', 'gps', 'GPS'], ['s-mot', 'mot', 'חיישן תנועה']]) {
       const el = $(id), st = sens[k] || 'wait';
       if (el.dataset.st !== st) { el.dataset.st = st; el.className = 'sens ' + st; el.setAttribute('aria-label', `${name}: ${WORD[st]}`); }
@@ -1809,8 +1869,9 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     const step = Math.max(1, Math.ceil(tr.length / 2400));
     return {
       source, date: new Date().toISOString(), th: coach.th, nGears: settings.nGears,
-      events: coach.events.map(e => ({ kind: e.kind || 'up', t: e.t, from: e.from, to: e.to, before: e.before, after: e.after, grade: e.grade, smooth: e.smooth, jerk: e.jerk, jerkBase: e.jerkBase, axis: e.axis, trace: e.trace, revDrop: e.revDrop, duration: e.duration, smoothSrc: e.smoothSrc })),
+      events: coach.events.map(e => ({ kind: e.kind || 'up', t: e.t, from: e.from, to: e.to, before: e.before, after: e.after, grade: e.grade, smooth: e.smooth, jerk: e.jerk, jerkBase: e.jerkBase, vdv: e.vdv, vdvBase: e.vdvBase, axis: e.axis, trace: e.trace, revDrop: e.revDrop, duration: e.duration, smoothSrc: e.smoothSrc })),
       trace: tr.filter((_, i) => i % step === 0).map(p => [Math.round(p.t * 10) / 10, p.rpm]),
+      mountShake: coach.mountShake() != null ? Math.round(coach.mountShake() * 100) / 100 : null, remounts: coach.remounts || 0,
       summary: coach.summary()
     };
   }
@@ -1818,7 +1879,10 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
   // ---------- DRIVE RECORDING (for calibration): compressed audio + sensor log in one JSON file ----------
   // Times in the file are seconds since the recorder started. The audio may start a little off that clock;
   // tests/replay.js finds the exact offset by matching the rpm logged live against the rpm from the audio.
-  let recording = null;  // { state: 'pending' | 'ready' | 'error', file, msg }
+  let recording = null;
+  // phone shake at standstill (m/s² RMS) above which the mount is called shaky. A guess: the first real drive's
+  // mount read 1.6, and a firm mount should be far lower.
+  const MOUNT_SHAKY = 0.6;  // { state: 'pending' | 'ready' | 'error', file, msg }
   function pickMime() {
     if (!window.MediaRecorder || !MediaRecorder.isTypeSupported) return '';
     for (const m of ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus']) if (MediaRecorder.isTypeSupported(m)) return m;
@@ -2000,7 +2064,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
           return {
             mic: now - lastAudio < 1 ? 'ok' : 'wait', level: micLevel,
             gps: gps.denied ? 'bad' : now - gps.last < 3 ? 'ok' : 'wait',
-            mot: mot.value === 'denied' ? 'bad' : now - motLast < 1 ? 'ok' : 'wait'
+            mot: mot.value === 'denied' ? 'bad' : now - motLast < 1 ? (coach.mountShake() > MOUNT_SHAKY ? 'shaky' : 'ok') : 'wait'
           };
         },
         stop: () => {
@@ -2190,6 +2254,11 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     w.appendChild(stats);
 
     if (recording) w.appendChild(recordingCard());
+    if (s.mountShake != null && s.mountShake > MOUNT_SHAKY) {
+      const mc = document.createElement('section'); mc.className = 'card notice';
+      mc.innerHTML = `<p><strong>הטלפון רעד במעמד</strong> (<span class="num">${s.mountShake} m/s²</span> כשהרכב עמד). הרעד נראה כמו טלטלה ופוגע בציון של החלקות. מעמד קשיח יותר, צמוד לרכב, ישפר את המדידה.</p>`;
+      w.appendChild(mc);
+    }
 
     const mcard = document.createElement('section'); mcard.className = 'card';
     mcard.innerHTML = `<h3>כל העברה: מילוי = חלקות, מסגרת = תזמון</h3>`;

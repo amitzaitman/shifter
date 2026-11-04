@@ -19,7 +19,7 @@ while (t < seconds) {
   pcm.set(block.subarray(0, Math.min(sub, pcm.length - idx)), idx); idx += sub;
   // sensor clock = audio clock + audioOffset
   lagQ.push([t, sim.kmh]); while (lagQ.length && lagQ[0][0] < t - 2) lagQ.shift();
-  while (nextMot <= t) { motion.push([+(nextMot + audioOffset).toFixed(3), +(0.04 * (Math.random() - 0.5)).toFixed(3), +(sim.longAccel() + 0.1 * (Math.random() - 0.5)).toFixed(3), +(0.04 * (Math.random() - 0.5)).toFixed(3)]); nextMot += 1 / 60; }
+  while (nextMot <= t) { motion.push([+(nextMot + audioOffset).toFixed(3), +(0.04 * (Math.random() - 0.5)).toFixed(3), +(sim.longAccel() + 0.1 * (Math.random() - 0.5)).toFixed(3), +(0.04 * (Math.random() - 0.5)).toFixed(3), 0, 0, 9.81]); nextMot += 1 / 60; }
   if (t >= nextGps) { const o = lagQ.find(q => q[0] >= t - 0.4) || lagQ[0]; gps.push([+(t + audioOffset).toFixed(3), +Math.max(0, o[1] + (Math.random() - 0.5) * 0.6).toFixed(2), null, null, 5]); nextGps += 1; }
 }
 // "live" rpm: what the phone's tracker would have logged (same tracker, on the sensor clock)

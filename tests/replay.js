@@ -61,6 +61,7 @@ console.log(`alignment   offset ${offset.toFixed(2)} s, live vs replay rpm withi
 console.log(`rpm found   ${Math.round(100 * valid / (rp.rpm.length || 1))}% of frames`);
 console.log(`gears       ${c.gears.gears.map(g => `${g.n}:${g.ratio.toFixed(1)}`).join(' ') || '-'}  (gps lag ${c.lag} s)`);
 const s = c.summary();
+console.log(`mount       shake at standstill ${c.mountShake() != null ? c.mountShake().toFixed(2) + ' m/s² RMS' : '-'}; phone moved in its mount ${c.remounts}×; axis quality ${c.axisQuality().toFixed(2)}`);
 console.log(`events      ${s.count} (up ${s.kinds.up}, down ${s.kinds.down}, launch ${s.kinds.launch}); smooth ${fmt(s.smooth)}%; timing score ${fmt(s.score)}`);
 console.log(`live had    ${(rec.events || []).length} events`);
 console.log('');
@@ -132,6 +133,10 @@ if ((rec.labels || []).length) {
   for (const k of K) {
     const v = rows.filter(x => x.k === k && x.e && ex(x.e) != null).map(x => ex(x.e)).sort((a, b) => a - b);
     if (v.length) console.log(`  ${k.padEnd(7)} jerk above road: min ${v[0].toFixed(1)}  median ${v[v.length >> 1].toFixed(1)}  max ${v[v.length - 1].toFixed(1)}  (n ${v.length})`);
+  }
+  for (const k of K) {
+    const v = rows.filter(x => x.k === k && x.e && x.e.vdv != null).map(x => x.e.vdvBase ? Math.max(0, x.e.vdv ** 4 - x.e.vdvBase ** 4) ** 0.25 : x.e.vdv).sort((a, b) => a - b);
+    if (v.length) console.log(`  ${k.padEnd(7)} VDV above road (ISO Wd): min ${v[0].toFixed(2)}  median ${v[v.length >> 1].toFixed(2)}  max ${v[v.length - 1].toFixed(2)}  (n ${v.length})`);
   }
   console.log(`current thresholds: smooth < ${E.SMOOTH_TH.ok}, ok < ${E.SMOOTH_TH.harsh}, harsh above`);
 }

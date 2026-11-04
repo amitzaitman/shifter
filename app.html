@@ -195,6 +195,10 @@ label.btn { position: relative; }
 .sens.bad { --c: var(--late); }
 .sens.bad .slash { display: inline; }
 @keyframes sensWait { 50% { opacity: .45; } }
+/* motion sensor works, but the phone shakes in its mount: yellow and wiggling */
+.sens.shaky { --c: var(--slight); }
+.sens.shaky svg:not(.lvl) { animation: sensShake .5s ease-in-out infinite; }
+@keyframes sensShake { 25% { transform: translateX(-1.5px) rotate(-4deg); } 75% { transform: translateX(1.5px) rotate(4deg); } }
 /* mic level: a ring that fills with loudness */
 .sens .lvl { position: absolute; inset: -2px; width: auto; height: auto; transform: rotate(-90deg); }
 .sens .lvl circle { stroke: var(--c); stroke-width: 3; fill: none; stroke-dasharray: 0 200; transition: stroke-dasharray .12s linear; }
@@ -745,7 +749,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     $('d-gear').textContent = L.gear != null ? L.gear : '';
     if (settings.showRpm) $('d-rpm').textContent = L.rpm != null ? fmt(Math.round(L.rpm / 10) * 10) : '----';
     const sens = run.sensors();
-    const WORD = { ok: 'פעיל', wait: 'ממתין', bad: 'חסום' };
+    const WORD = { ok: 'פעיל', wait: 'ממתין', bad: 'חסום', shaky: 'פעיל, אבל הטלפון רועד במעמד' };
     for (const [id, k, name] of [['s-mic', 'mic', 'מיקרופון'], ['s-gps', 'gps', 'GPS'], ['s-mot', 'mot', 'חיישן תנועה']]) {
       const el = $(id), st = sens[k] || 'wait';
       if (el.dataset.st !== st) { el.dataset.st = st; el.className = 'sens ' + st; el.setAttribute('aria-label', `${name}: ${WORD[st]}`); }
@@ -794,8 +798,9 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     const step = Math.max(1, Math.ceil(tr.length / 2400));
     return {
       source, date: new Date().toISOString(), th: coach.th, nGears: settings.nGears,
-      events: coach.events.map(e => ({ kind: e.kind || 'up', t: e.t, from: e.from, to: e.to, before: e.before, after: e.after, grade: e.grade, smooth: e.smooth, jerk: e.jerk, jerkBase: e.jerkBase, axis: e.axis, trace: e.trace, revDrop: e.revDrop, duration: e.duration, smoothSrc: e.smoothSrc })),
+      events: coach.events.map(e => ({ kind: e.kind || 'up', t: e.t, from: e.from, to: e.to, before: e.before, after: e.after, grade: e.grade, smooth: e.smooth, jerk: e.jerk, jerkBase: e.jerkBase, vdv: e.vdv, vdvBase: e.vdvBase, axis: e.axis, trace: e.trace, revDrop: e.revDrop, duration: e.duration, smoothSrc: e.smoothSrc })),
       trace: tr.filter((_, i) => i % step === 0).map(p => [Math.round(p.t * 10) / 10, p.rpm]),
+      mountShake: coach.mountShake() != null ? Math.round(coach.mountShake() * 100) / 100 : null, remounts: coach.remounts || 0,
       summary: coach.summary()
     };
   }
@@ -803,7 +808,10 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
   // ---------- DRIVE RECORDING (for calibration): compressed audio + sensor log in one JSON file ----------
   // Times in the file are seconds since the recorder started. The audio may start a little off that clock;
   // tests/replay.js finds the exact offset by matching the rpm logged live against the rpm from the audio.
-  let recording = null;  // { state: 'pending' | 'ready' | 'error', file, msg }
+  let recording = null;
+  // phone shake at standstill (m/s² RMS) above which the mount is called shaky. A guess: the first real drive's
+  // mount read 1.6, and a firm mount should be far lower.
+  const MOUNT_SHAKY = 0.6;  // { state: 'pending' | 'ready' | 'error', file, msg }
   function pickMime() {
     if (!window.MediaRecorder || !MediaRecorder.isTypeSupported) return '';
     for (const m of ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus']) if (MediaRecorder.isTypeSupported(m)) return m;
@@ -985,7 +993,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
           return {
             mic: now - lastAudio < 1 ? 'ok' : 'wait', level: micLevel,
             gps: gps.denied ? 'bad' : now - gps.last < 3 ? 'ok' : 'wait',
-            mot: mot.value === 'denied' ? 'bad' : now - motLast < 1 ? 'ok' : 'wait'
+            mot: mot.value === 'denied' ? 'bad' : now - motLast < 1 ? (coach.mountShake() > MOUNT_SHAKY ? 'shaky' : 'ok') : 'wait'
           };
         },
         stop: () => {
@@ -1175,6 +1183,11 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     w.appendChild(stats);
 
     if (recording) w.appendChild(recordingCard());
+    if (s.mountShake != null && s.mountShake > MOUNT_SHAKY) {
+      const mc = document.createElement('section'); mc.className = 'card notice';
+      mc.innerHTML = `<p><strong>הטלפון רעד במעמד</strong> (<span class="num">${s.mountShake} m/s²</span> כשהרכב עמד). הרעד נראה כמו טלטלה ופוגע בציון של החלקות. מעמד קשיח יותר, צמוד לרכב, ישפר את המדידה.</p>`;
+      w.appendChild(mc);
+    }
 
     const mcard = document.createElement('section'); mcard.className = 'card';
     mcard.innerHTML = `<h3>כל העברה: מילוי = חלקות, מסגרת = תזמון</h3>`;
