@@ -247,7 +247,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
       </div>
       <div class="row">
         <button class="btn" id="btn-demo">הדגמה</button>
-        <label class="btn" id="lbl-file">נתח הקלטה<input type="file" id="file-in" accept="audio/*,video/*"></label>
+        <label class="btn" id="lbl-file">נתח הקלטה<input type="file" id="file-in" accept="audio/*,video/*,.json,application/json"></label>
       </div>
 
       <div class="card notice" id="notice" hidden>
@@ -330,6 +330,8 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
       <div class="card">
         <div class="switch"><label for="in-sound">צפצוף כשצריך להעביר</label><input type="checkbox" id="in-sound"></div>
         <div class="switch"><label for="in-nums">להציג סל"ד והילוך על המסך</label><input type="checkbox" id="in-nums" checked></div>
+        <div class="switch"><label for="in-record">לשמור הקלטה של כל נסיעה (קול, GPS ותאוצה), בשביל כיול</label><input type="checkbox" id="in-record"></div>
+        <p class="small muted">ההקלטה כוללת את המיקום שלך. בסוף הנסיעה יופיע במסך הסיכום כפתור לשיתוף הקובץ. הקובץ לא נשמר בטלפון: אם תסגור את הדף לפני שתשתף, הוא יאבד.</p>
       </div>
       <div class="card">
         <h3>הילוכים שנלמדו</h3>
@@ -1198,7 +1200,73 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     }
   }
 
-  const api = { makeFFT, Spectrum, RpmTracker, GearModel, Coach, DriveSim, EngineSynth, thresholds, gradeShift, GRADES };
+  // ---------- הרצה חוזרת של הקלטת נסיעה (קול + חיישנים) ----------
+  // rec: תוכן קובץ ההקלטה. pcm: קול מונו (Float32Array). הזמנים בקובץ יחסיים לתחילת הקלטת הקול.
+  // offset: כמה שניות להוסיף לזמני החיישנים כדי שיתאימו לקול (ראו alignOffset).
+  // החיישנים מוזנים עד סוף חלון הקול הנוכחי, כמו בנסיעה חיה.
+  class Replayer {
+    constructor(rec, pcm, sampleRate, o) {
+      o = o || {};
+      const s = Object.assign({}, rec.settings || {}, o.settings || {});
+      this.n = o.n || rec.fftN || 8192; this.sr = sampleRate; this.pcm = pcm;
+      this.hop = Math.round(sampleRate / 12);
+      this.offset = o.offset || 0;
+      const nG = s.nGears || 5;
+      const gm = o.freshGears || !rec.gearsAtStart ? new GearModel(nG) : GearModel.fromJSON(rec.gearsAtStart, nG);
+      this.coach = new Coach(s, gm);
+      this.spec = new Spectrum(this.n);
+      this.tracker = new RpmTracker({ sampleRate, n: this.n, cylinders: (s.cylinders || 4) * (s.rpmScale || 1) });
+      this.gps = o.gps === false ? [] : (rec.gps || []);
+      this.mot = o.motion === false ? [] : (rec.motion || []);
+      this.gi = 0; this.mi = 0; this.f = 0;
+      this.frames = Math.max(0, Math.floor((pcm.length - this.n) / this.hop));
+      this.rpm = [];  // [tc, rpm] לכל פריים
+    }
+    step(count) {
+      const end = Math.min(this.frames, this.f + (count || this.frames));
+      const c = this.coach, off = this.offset, n = this.n, sr = this.sr;
+      for (; this.f < end; this.f++) {
+        const start = this.f * this.hop, tEnd = (start + n) / sr, tc = (start + n / 2) / sr;
+        while (this.mi < this.mot.length && this.mot[this.mi][0] + off <= tEnd) { const m = this.mot[this.mi++]; c.motion(m[0] + off, m[1], m[2], m[3], m[4], m[5], m[6]); }
+        while (this.gi < this.gps.length && this.gps[this.gi][0] + off <= tEnd) { const g = this.gps[this.gi++]; c.gpsFix(g[0] + off, g[1]); }
+        const priors = c.gears.complete ? c.gears.predict(c.speedAt(tc)) : null;
+        const r = this.tracker.update(this.spec.compute(this.pcm, start), tc, priors);
+        this.rpm.push([tc, r.rpm]);
+        c.audio(tc, r);
+      }
+      return this.f / (this.frames || 1);
+    }
+    get done() { return this.f >= this.frames; }
+  }
+
+  // הקול בקובץ יכול להתחיל קצת לפני או אחרי השעון של החיישנים (השהיה של MediaRecorder).
+  // משווים את הסל"ד שחושב בזמן הנסיעה (live) לסל"ד מהקול המוקלט, ומחפשים את ההזזה שבה הם הכי מסכימים.
+  // מחזיר offset להוספה לזמני החיישנים, ואת שיעור הפריימים שמסכימים בטווח 5%.
+  function alignOffset(live, replay, range, stepS) {
+    range = range || 1.5; stepS = stepS || 0.02;
+    const L = live.filter(p => p[1]), R = replay.filter(p => p[1]);
+    if (L.length < 20 || R.length < 20) return { offset: 0, agree: null, n: 0 };
+    const near = (t) => {
+      let lo = 0, hi = L.length - 1;
+      while (hi - lo > 1) { const m = (lo + hi) >> 1; if (L[m][0] < t) lo = m; else hi = m; }
+      const a = L[lo], b = L[hi], best = Math.abs(a[0] - t) < Math.abs(b[0] - t) ? a : b;
+      return Math.abs(best[0] - t) < 0.12 ? best[1] : null;
+    };
+    // מדד: שגיאה לוגריתמית ממוצעת, חסומה ב-10% (כדי שטעויות אוקטבה לא ישלטו). הקפיצות בהעברות הן מה שנותן לו חדות.
+    let best = null;
+    for (let d = -range; d <= range + 1e-9; d += stepS) {
+      let err = 0, ok = 0, n = 0;
+      for (const [t, r] of R) {
+        const l = near(t + d); if (l == null) continue;
+        const e = Math.abs(Math.log(r / l)); n++; err += Math.min(e, 0.1); if (e <= 0.05) ok++;
+      }
+      if (n < 20) continue;
+      if (!best || err / n < best.err) best = { offset: -Math.round(d * 100) / 100, agree: Math.round(1000 * ok / n) / 1000, n, err: err / n };
+    }
+    return best ? { offset: best.offset, agree: best.agree, n: best.n } : { offset: 0, agree: null, n: 0 };
+  }
+
+  const api = { makeFFT, Spectrum, RpmTracker, GearModel, Coach, DriveSim, EngineSynth, Replayer, alignOffset, thresholds, gradeShift, GRADES };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.ShiftEngine = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
@@ -1215,7 +1283,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     get(k, d) { try { const v = localStorage.getItem('shiftcoach.' + k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
     set(k, v) { try { localStorage.setItem('shiftcoach.' + k, JSON.stringify(v)); } catch (e) { /* storage blocked */ } }
   };
-  const DEFAULTS = { mode: 'eco', ecoTarget: 2500, redline: 6500, nGears: 5, cylinders: 4, rpmScale: 1, sound: false, numbers: true };
+  const DEFAULTS = { mode: 'eco', ecoTarget: 2500, redline: 6500, nGears: 5, cylinders: 4, rpmScale: 1, sound: false, numbers: true, record: false };
   let settings = Object.assign({}, DEFAULTS, LS.get('settings', {}));
   let gearModel = E.GearModel.fromJSON(LS.get('gears', null), settings.nGears);
   let session = LS.get('session', null);
@@ -1234,7 +1302,9 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
   function saveGears() { if (!run || run.kind === 'live') LS.set('gears', gearModel.toJSON()); }
 
   // ---------- views ----------
+  let currentView = 'drive';
   function show(view) {
+    currentView = view;
     for (const v of ['drive', 'summary', 'settings']) {
       $('view-' + v).hidden = v !== view;
       $('tab-' + v).setAttribute('aria-selected', String(v === view));
@@ -1432,6 +1502,11 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
       LS.set('session', session);
     }
     if (r.kind === 'live') saveGears();
+    if (r.recorder) {
+      recording = { state: 'pending' };
+      r.recorder.finish(session).then(file => { recording = { state: 'ready', file }; if (currentView === 'summary') renderSummary(); })
+        .catch(err => { recording = { state: 'error', msg: String(err && err.message || err) }; if (currentView === 'summary') renderSummary(); });
+    }
     show('summary');
   }
   $('btn-stop').addEventListener('click', stopRun);
@@ -1450,6 +1525,72 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
       trace: tr.filter((_, i) => i % step === 0).map(p => [Math.round(p.t * 10) / 10, p.rpm]),
       summary: coach.summary()
     };
+  }
+
+  // ---------- DRIVE RECORDING (for calibration): compressed audio + sensor log in one JSON file ----------
+  // Times in the file are seconds since the recorder started. The audio may start a little off that clock;
+  // tests/replay.js finds the exact offset by matching the rpm logged live against the rpm from the audio.
+  let recording = null;  // { state: 'pending' | 'ready' | 'error', file, msg }
+  function pickMime() {
+    if (!window.MediaRecorder || !MediaRecorder.isTypeSupported) return '';
+    for (const m of ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus']) if (MediaRecorder.isTypeSupported(m)) return m;
+    return '';
+  }
+  function startRecording(stream, sampleRate) {
+    if (!window.MediaRecorder) { notice('הדפדפן הזה לא יודע להקליט, אז הנסיעה תעבוד בלי הקלטה.'); return null; }
+    const mime = pickMime();
+    let mr;
+    try { mr = new MediaRecorder(stream, Object.assign({ audioBitsPerSecond: 96000 }, mime ? { mimeType: mime } : {})); }
+    catch (e) { try { mr = new MediaRecorder(stream); } catch (e2) { notice('לא הצלחתי להתחיל הקלטה. הנסיעה תעבוד בלי הקלטה.'); return null; } }
+    const chunks = [], gpsLog = [], motLog = [], live = [];
+    let t0 = performance.now() / 1000, motSrc = null;
+    const gearsAtStart = gearModel.toJSON(), settingsAtStart = Object.assign({}, settings), startedAt = new Date().toISOString();
+    mr.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
+    mr.onstart = () => { t0 = performance.now() / 1000; gpsLog.length = motLog.length = live.length = 0; };
+    mr.start(1000);
+    const r3 = (v) => Math.round(v * 1000) / 1000;
+    return {
+      gps(q) { gpsLog.push([r3(q[0] - t0), Math.round(q[1] * 100) / 100, q[2] != null ? +q[2].toFixed(6) : null, q[3] != null ? +q[3].toFixed(6) : null, q[4] != null ? Math.round(q[4]) : null]); },
+      // [t, ax, ay, az] or [t, ax, ay, az, gx, gy, gz]
+      motion(t, a, gv, src) { motSrc = src; motLog.push([r3(t - t0), r3(a[0]), r3(a[1]), r3(a[2])].concat(gv ? gv.map(v => Math.round(v * 100) / 100) : [])); },
+      frame(tc, rpm) { live.push([r3(tc - t0), rpm ? Math.round(rpm) : null]); },
+      finish(sess) {
+        return new Promise((resolve, reject) => {
+          mr.onstop = () => {
+            const type = mr.mimeType || mime || (chunks[0] && chunks[0].type) || 'audio/mp4';
+            const blob = new Blob(chunks, { type });
+            if (!blob.size) { reject(new Error('empty')); return; }
+            const fr = new FileReader();
+            fr.onerror = () => reject(fr.error);
+            fr.onload = () => {
+              const b64 = String(fr.result).split(',')[1] || '';
+              const rec = {
+                format: 'shift-coach-recording', v: 1, startedAt, userAgent: navigator.userAgent,
+                settings: settingsAtStart, sampleRate, fftN: 8192, motionSrc: motSrc, gearsAtStart,
+                gps: gpsLog, motion: motLog, live, events: sess ? sess.events : [],
+                audio: { mime: type, bytes: blob.size, base64: b64 }
+              };
+              const d = new Date(startedAt), pad = (x) => String(x).padStart(2, '0');
+              const name = `drive-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}.json`;
+              resolve(new File([JSON.stringify(rec)], name, { type: 'application/json' }));
+            };
+            fr.readAsDataURL(blob);
+          };
+          try { mr.state !== 'inactive' ? mr.stop() : mr.onstop(); } catch (e) { reject(e); }
+        });
+      }
+    };
+  }
+  function shareRecording(file) {
+    const data = { files: [file], title: 'הקלטת נסיעה' };
+    if (navigator.canShare && navigator.canShare(data)) {
+      navigator.share(data).catch((e) => { if (e && e.name !== 'AbortError') downloadFile(file); });
+    } else downloadFile(file);
+  }
+  function downloadFile(file) {
+    const url = URL.createObjectURL(file), a = document.createElement('a');
+    a.href = url; a.download = file.name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
   }
 
   // ---------- LIVE: microphone + GPS + motion ----------
@@ -1484,7 +1625,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
           v = dt > 0.3 ? dist / dt : null;
         }
         gps.prev = { lat: pos.coords.latitude, lon: pos.coords.longitude, t };
-        if (v >= 0) { gps.last = now; gpsQueue.push([t, v * 3.6]); }
+        if (v >= 0) { gps.last = now; gpsQueue.push([t, v * 3.6, pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy]); }
       }, () => { gps.denied = true; }, { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 });
     } catch (e) { gps.denied = true; }
     let wake = null;
@@ -1505,36 +1646,43 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
       const buf = new Float32Array(8192);
       const spec = new E.Spectrum(8192), tracker = makeTracker(ctx.sampleRate);
       const coach = makeCoach(gearModel);
+      const recorder = settings.record ? startRecording(stream, ctx.sampleRate) : null;
       let lastAudio = 0, motLast = 0, hp = null;
+      // a: acceleration without gravity; gv: gravity vector (or null), used by the coach to drop the vertical part
+      const feedMotion = (now, a, gv, src) => {
+        if (gv) coach.motion(now, a[0], a[1], a[2], gv[0], gv[1], gv[2]); else coach.motion(now, a[0], a[1], a[2]);
+        motLast = now; if (recorder) recorder.motion(now, a, gv, src);
+      };
       const onMotion = (e) => {
         const now = performance.now() / 1000;
         let a = e.acceleration;
         const g = e.accelerationIncludingGravity, hasG = g && g.x != null;
         if (a && a.x != null) {
-          if (hasG) coach.motion(now, a.x, a.y, a.z, g.x - a.x, g.y - a.y, g.z - a.z);
-          else coach.motion(now, a.x, a.y, a.z);
-          motLast = now; return;
+          if (hasG) feedMotion(now, [a.x, a.y, a.z], [g.x - a.x, g.y - a.y, g.z - a.z], 'acceleration');
+          else feedMotion(now, [a.x, a.y, a.z], null, 'acceleration');
+          return;
         }
         if (!hasG) return;
         if (!hp) hp = [g.x, g.y, g.z];
         for (let i = 0; i < 3; i++) hp[i] += 0.02 * ([g.x, g.y, g.z][i] - hp[i]);
-        coach.motion(now, g.x - hp[0], g.y - hp[1], g.z - hp[2], hp[0], hp[1], hp[2]); motLast = now;
+        feedMotion(now, [g.x - hp[0], g.y - hp[1], g.z - hp[2]], hp.slice(), 'gravity-hp');
       };
       if (mot.value !== 'denied') window.addEventListener('devicemotion', onMotion);
       let saveT = 0;
       const timer = setInterval(() => {
         an.getFloatTimeDomainData(buf);
         const now = performance.now() / 1000;
-        while (gpsQueue.length) { const [t, k] = gpsQueue.shift(); coach.gpsFix(t, k); }
+        while (gpsQueue.length) { const q = gpsQueue.shift(); coach.gpsFix(q[0], q[1]); if (recorder) recorder.gps(q); }
         const tc = now - 4096 / ctx.sampleRate;
         const priors = gearModel.complete ? gearModel.predict(coach.speedAt(tc)) : null;
         const r = tracker.update(spec.compute(buf), tc, priors);
         if (r.rpm) lastAudio = now;
         coach.audio(tc, r);
+        if (recorder) recorder.frame(tc, r.rpm);
         if (now - saveT > 20) { saveT = now; saveGears(); }
       }, 83);
       run = {
-        kind: 'live', coach, ctx,
+        kind: 'live', coach, ctx, recorder,
         clock: () => performance.now() / 1000,
         sensors: () => {
           const now = performance.now() / 1000;
@@ -1614,6 +1762,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     let ctx;
     try { ctx = new AC(); } catch (err) { notice('הדפדפן הזה לא יודע לפענח קובצי קול.'); return; }
     $('analyze-card').hidden = false; $('analyze-text').textContent = `קורא את ${file.name}…`; $('analyze-bar').style.width = '0%';
+    if (/\.json$/i.test(file.name) || file.type === 'application/json') { replayFile(file, ctx); return; }
     file.arrayBuffer().then(ab => new Promise((res, rej) => {
       const p = ctx.decodeAudioData(ab, res, rej); if (p && p.then) p.then(res, rej);
     })).then(audio => {
@@ -1652,6 +1801,39 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     });
   });
 
+  // a drive recording: decode its audio and run it with its GPS and motion through the engine
+  function replayFile(file, ctx) {
+    const fail = (msg) => { ctx.close().catch(() => {}); $('analyze-card').hidden = true; notice(msg); };
+    file.text().then(txt => {
+      const rec = JSON.parse(txt);
+      if (rec.format !== 'shift-coach-recording' || !rec.audio || !rec.audio.base64) throw new Error('format');
+      const bin = atob(rec.audio.base64), u8 = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+      return new Promise((res, rej) => { const p = ctx.decodeAudioData(u8.buffer, res, rej); if (p && p.then) p.then(res, rej); })
+        .then(audio => ({ rec, audio }));
+    }).then(({ rec, audio }) => {
+      const data = new Float32Array(audio.length);
+      for (let ch = 0; ch < audio.numberOfChannels; ch++) { const c = audio.getChannelData(ch); for (let i = 0; i < c.length; i++) data[i] += c[i] / audio.numberOfChannels; }
+      // current mode/target settings, but the car (cylinders, gears) from the recording
+      const rp = new E.Replayer(rec, data, audio.sampleRate, { settings: { mode: settings.mode, ecoTarget: settings.ecoTarget, redline: settings.redline } });
+      if (rp.frames < 24) throw new Error('short');
+      $('analyze-text').textContent = `מנתח ${Math.round(audio.duration)} שניות של נסיעה עם GPS ותאוצה…`;
+      const chunk = () => {
+        const prog = rp.step(160);
+        $('analyze-bar').style.width = Math.round(100 * prog) + '%';
+        if (!rp.done) { setTimeout(chunk, 0); return; }
+        ctx.close().catch(() => {});
+        $('analyze-card').hidden = true;
+        session = packSession(rp.coach, 'הקלטת נסיעה');
+        LS.set('session', session);
+        recording = null;
+        show('summary');
+      };
+      chunk();
+    }).catch(err => fail(err && err.message === 'short' ? 'ההקלטה קצרה מדי.' : err && err.message === 'format'
+      ? 'זה לא קובץ הקלטה של המאמן.' : 'לא הצלחתי לפענח את קובץ ההקלטה.'));
+  }
+
   // ---------- SUMMARY ----------
   let selected = null;
   function renderSummary() {
@@ -1676,6 +1858,17 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
       <div class="stat"><div class="v num">${sum.score != null ? sum.score : '–'}</div><div class="l">ציון תזמון</div></div>
       <div class="stat"><div class="v num">${ev.length}</div><div class="l">העברות</div></div>`;
     w.appendChild(stats);
+
+    if (recording) {
+      const rc = document.createElement('section'); rc.className = 'card';
+      if (recording.state === 'pending') rc.innerHTML = `<h3>הקלטת הנסיעה</h3><p class="muted">מכין את הקובץ…</p>`;
+      else if (recording.state === 'error') rc.innerHTML = `<h3>הקלטת הנסיעה</h3><p class="muted">ההקלטה נכשלה (${recording.msg}).</p>`;
+      else {
+        rc.innerHTML = `<h3>הקלטת הנסיעה</h3><p class="small muted">הקובץ <span class="num">${recording.file.name}</span> (<span class="num">${(recording.file.size / 1048576).toFixed(1)} MB</span>) כולל את הקול, ה-GPS והתאוצה. הוא יאבד אם תסגור את הדף.</p><button class="btn primary" id="btn-share-rec">שתף הקלטה</button>`;
+        rc.querySelector('#btn-share-rec').addEventListener('click', () => shareRecording(recording.file));
+      }
+      w.appendChild(rc);
+    }
 
     const mcard = document.createElement('section'); mcard.className = 'card';
     mcard.innerHTML = `<h3>כל העברה: מילוי = חלקות, מסגרת = תזמון</h3>`;
@@ -1793,7 +1986,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     const ts = E.thresholds(Object.assign({}, settings, { mode: 'sport' }));
     $('eco-desc').textContent = `בזמן: ${fmt(te.goodLo)}–${fmt(te.goodHi)}. מוקדם: מתחת ל-${fmt(te.goodLo)}, או אם אחרי ההעברה המנוע ירד מתחת ל-${fmt(te.lug)}.`;
     $('red-desc').textContent = `בספורטיבי, בזמן: ${fmt(ts.goodLo)}–${fmt(ts.goodHi)}.`;
-    $('in-sound').checked = !!settings.sound; $('in-nums').checked = !!settings.numbers;
+    $('in-sound').checked = !!settings.sound; $('in-nums').checked = !!settings.numbers; $('in-record').checked = !!settings.record;
     const gs = gearModel.solve();
     $('gear-status').textContent = gs.length
       ? (gearModel.complete ? `כל ${settings.nGears} ההילוכים נלמדו. הצבעים יודעים עכשיו גם באיזה הילוך אתה.` : `נלמדו ${gs.length} מתוך ${settings.nGears}. ממשיך ללמוד בכל נסיעה.`)
@@ -1828,6 +2021,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
   $('in-eco').addEventListener('input', (e) => { settings.ecoTarget = +e.target.value; saveSettings(); renderSettings(); });
   $('in-red').addEventListener('input', (e) => { settings.redline = +e.target.value; saveSettings(); renderSettings(); });
   $('in-sound').addEventListener('change', (e) => { settings.sound = e.target.checked; saveSettings(); });
+  $('in-record').addEventListener('change', (e) => { settings.record = e.target.checked; saveSettings(); });
   $('in-nums').addEventListener('change', (e) => { settings.numbers = e.target.checked; saveSettings(); });
   window.addEventListener('resize', () => { if (!$('view-summary').hidden && session) drawChart($('chart'), session); });
 

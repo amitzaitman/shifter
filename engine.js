@@ -816,7 +816,73 @@
     }
   }
 
-  const api = { makeFFT, Spectrum, RpmTracker, GearModel, Coach, DriveSim, EngineSynth, thresholds, gradeShift, GRADES };
+  // ---------- הרצה חוזרת של הקלטת נסיעה (קול + חיישנים) ----------
+  // rec: תוכן קובץ ההקלטה. pcm: קול מונו (Float32Array). הזמנים בקובץ יחסיים לתחילת הקלטת הקול.
+  // offset: כמה שניות להוסיף לזמני החיישנים כדי שיתאימו לקול (ראו alignOffset).
+  // החיישנים מוזנים עד סוף חלון הקול הנוכחי, כמו בנסיעה חיה.
+  class Replayer {
+    constructor(rec, pcm, sampleRate, o) {
+      o = o || {};
+      const s = Object.assign({}, rec.settings || {}, o.settings || {});
+      this.n = o.n || rec.fftN || 8192; this.sr = sampleRate; this.pcm = pcm;
+      this.hop = Math.round(sampleRate / 12);
+      this.offset = o.offset || 0;
+      const nG = s.nGears || 5;
+      const gm = o.freshGears || !rec.gearsAtStart ? new GearModel(nG) : GearModel.fromJSON(rec.gearsAtStart, nG);
+      this.coach = new Coach(s, gm);
+      this.spec = new Spectrum(this.n);
+      this.tracker = new RpmTracker({ sampleRate, n: this.n, cylinders: (s.cylinders || 4) * (s.rpmScale || 1) });
+      this.gps = o.gps === false ? [] : (rec.gps || []);
+      this.mot = o.motion === false ? [] : (rec.motion || []);
+      this.gi = 0; this.mi = 0; this.f = 0;
+      this.frames = Math.max(0, Math.floor((pcm.length - this.n) / this.hop));
+      this.rpm = [];  // [tc, rpm] לכל פריים
+    }
+    step(count) {
+      const end = Math.min(this.frames, this.f + (count || this.frames));
+      const c = this.coach, off = this.offset, n = this.n, sr = this.sr;
+      for (; this.f < end; this.f++) {
+        const start = this.f * this.hop, tEnd = (start + n) / sr, tc = (start + n / 2) / sr;
+        while (this.mi < this.mot.length && this.mot[this.mi][0] + off <= tEnd) { const m = this.mot[this.mi++]; c.motion(m[0] + off, m[1], m[2], m[3], m[4], m[5], m[6]); }
+        while (this.gi < this.gps.length && this.gps[this.gi][0] + off <= tEnd) { const g = this.gps[this.gi++]; c.gpsFix(g[0] + off, g[1]); }
+        const priors = c.gears.complete ? c.gears.predict(c.speedAt(tc)) : null;
+        const r = this.tracker.update(this.spec.compute(this.pcm, start), tc, priors);
+        this.rpm.push([tc, r.rpm]);
+        c.audio(tc, r);
+      }
+      return this.f / (this.frames || 1);
+    }
+    get done() { return this.f >= this.frames; }
+  }
+
+  // הקול בקובץ יכול להתחיל קצת לפני או אחרי השעון של החיישנים (השהיה של MediaRecorder).
+  // משווים את הסל"ד שחושב בזמן הנסיעה (live) לסל"ד מהקול המוקלט, ומחפשים את ההזזה שבה הם הכי מסכימים.
+  // מחזיר offset להוספה לזמני החיישנים, ואת שיעור הפריימים שמסכימים בטווח 5%.
+  function alignOffset(live, replay, range, stepS) {
+    range = range || 1.5; stepS = stepS || 0.02;
+    const L = live.filter(p => p[1]), R = replay.filter(p => p[1]);
+    if (L.length < 20 || R.length < 20) return { offset: 0, agree: null, n: 0 };
+    const near = (t) => {
+      let lo = 0, hi = L.length - 1;
+      while (hi - lo > 1) { const m = (lo + hi) >> 1; if (L[m][0] < t) lo = m; else hi = m; }
+      const a = L[lo], b = L[hi], best = Math.abs(a[0] - t) < Math.abs(b[0] - t) ? a : b;
+      return Math.abs(best[0] - t) < 0.12 ? best[1] : null;
+    };
+    // מדד: שגיאה לוגריתמית ממוצעת, חסומה ב-10% (כדי שטעויות אוקטבה לא ישלטו). הקפיצות בהעברות הן מה שנותן לו חדות.
+    let best = null;
+    for (let d = -range; d <= range + 1e-9; d += stepS) {
+      let err = 0, ok = 0, n = 0;
+      for (const [t, r] of R) {
+        const l = near(t + d); if (l == null) continue;
+        const e = Math.abs(Math.log(r / l)); n++; err += Math.min(e, 0.1); if (e <= 0.05) ok++;
+      }
+      if (n < 20) continue;
+      if (!best || err / n < best.err) best = { offset: -Math.round(d * 100) / 100, agree: Math.round(1000 * ok / n) / 1000, n, err: err / n };
+    }
+    return best ? { offset: best.offset, agree: best.agree, n: best.n } : { offset: 0, agree: null, n: 0 };
+  }
+
+  const api = { makeFFT, Spectrum, RpmTracker, GearModel, Coach, DriveSim, EngineSynth, Replayer, alignOffset, thresholds, gradeShift, GRADES };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.ShiftEngine = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
