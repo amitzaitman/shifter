@@ -1,0 +1,917 @@
+<title>מאמן הילוכים</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Karantina:wght@400;700&family=IBM+Plex+Sans+Hebrew:wght@400;500;600&family=Chakra+Petch:wght@500;600&display=swap">
+<style>
+/* Layout: the screen is the instrument. One full-bleed colour field, a thick frame for timing, the fill for smoothness. */
+:root {
+  --bg: #0b0e10;
+  --surface: #12171b;
+  --raise: #1a2127;
+  --line: #27313a;
+  --fg: #e6ecf0;
+  --muted: #84909a;
+  --accent: #5cc8ff;
+  --good: #35d07f;
+  --slight: #f2c230;
+  --late: #ff4d5e;
+  --early: #a98bff;
+  --font-display: "Karantina", "IBM Plex Sans Hebrew", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans Hebrew", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-num: "Chakra Petch", ui-monospace, "SF Mono", Menlo, monospace;
+  --frame: var(--line);
+  --fill: var(--bg);
+  --frame-w: clamp(14px, 4.2vmin, 30px);
+  color-scheme: dark;
+}
+html, body { height: 100%; }
+body {
+  background: var(--bg); color: var(--fg);
+  font-family: var(--font-body); font-size: 15px; line-height: 1.5;
+  -webkit-tap-highlight-color: transparent;
+}
+* { box-sizing: border-box; }
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.num { font-family: var(--font-num); font-variant-numeric: tabular-nums; direction: ltr; unicode-bidi: isolate; }
+
+#app { min-height: 100%; display: flex; flex-direction: column; }
+
+/* ---------- top bar ---------- */
+.bar {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding-block: 10px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  border-bottom: 1px solid var(--line);
+}
+.brand { font-family: var(--font-display); font-size: 34px; line-height: 1; letter-spacing: 0.01em; display: flex; align-items: center; gap: 10px; }
+.brand .mark { width: 22px; height: 22px; border: 4px solid var(--accent); border-radius: 5px; background: color-mix(in oklab, var(--good) 55%, var(--bg)); flex: none; }
+.tabs { display: flex; gap: 4px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 3px; }
+.tabs button { border: 0; background: transparent; padding: 6px 12px; border-radius: 7px; color: var(--muted); font-weight: 500; }
+.tabs button[aria-selected="true"] { background: var(--raise); color: var(--fg); }
+
+.view { flex: 1; display: flex; flex-direction: column; }
+.wrap {
+  width: 100%; max-width: 760px; margin-inline: auto;
+  padding-block: 18px 28px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: flex; flex-direction: column; gap: 18px;
+}
+h2 { font-family: var(--font-display); font-weight: 700; font-size: 40px; line-height: 1; margin: 0; text-wrap: balance; }
+h3 { font-size: 13px; font-weight: 600; letter-spacing: 0.06em; color: var(--muted); margin: 0; }
+p { margin: 0; }
+.muted { color: var(--muted); }
+.small { font-size: 13px; }
+
+/* ---------- buttons ---------- */
+.btn {
+  border: 1px solid var(--line); background: var(--raise); border-radius: 12px;
+  padding: 12px 16px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: 48px;
+}
+.btn.primary { background: var(--accent); color: #04121b; border-color: transparent; }
+.btn.big { font-size: 20px; min-height: 64px; border-radius: 16px; }
+.btn:active { transform: translateY(1px); }
+.row { display: flex; gap: 10px; flex-wrap: wrap; }
+.row > .btn { flex: 1 1 150px; }
+label.btn input[type=file] { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+label.btn { position: relative; }
+
+/* ---------- start screen ---------- */
+.hero { display: grid; grid-template-columns: auto 1fr; gap: 18px; align-items: center; }
+.hero-tile {
+  width: 112px; aspect-ratio: 1; max-width: 100%; border-radius: 22px;
+  border: 14px solid var(--good); background: color-mix(in oklab, var(--slight) 72%, var(--bg));
+  animation: tile 7s infinite steps(1);
+}
+@keyframes tile {
+  0% { border-color: var(--good); background: color-mix(in oklab, var(--good) 72%, var(--bg)); }
+  25% { border-color: var(--late); background: color-mix(in oklab, var(--slight) 72%, var(--bg)); }
+  50% { border-color: var(--good); background: color-mix(in oklab, var(--late) 72%, var(--bg)); }
+  75% { border-color: var(--early); background: color-mix(in oklab, var(--good) 72%, var(--bg)); }
+}
+.hero p { color: var(--muted); max-width: 46ch; }
+
+.legend { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.legend .card { min-width: 0; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+.key { display: flex; align-items: center; gap: 10px; font-size: 14px; }
+.sw { width: 26px; height: 26px; border-radius: 6px; flex: none; }
+.sw.frame { border: 6px solid currentColor; background: var(--bg); }
+.sw.fill { background: currentColor; }
+.c-good { color: var(--good); } .c-slight { color: var(--slight); } .c-late { color: var(--late); } .c-early { color: var(--early); } .c-accent { color: var(--accent); }
+.live-keys { grid-column: 1 / -1; }
+.live-keys .keys { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px 18px; }
+
+.notice { border-color: color-mix(in oklab, var(--slight) 55%, var(--line)); background: color-mix(in oklab, var(--slight) 7%, var(--surface)); }
+.notice strong { color: var(--slight); }
+.progress { height: 6px; background: var(--raise); border-radius: 99px; overflow: hidden; }
+.progress > i { display: block; height: 100%; width: 0%; background: var(--accent); transition: width .2s; }
+
+/* ---------- driving stage ---------- */
+#stage {
+  position: fixed; inset: 0; z-index: 20;
+  background: var(--fill);
+  transition: background-color .35s ease;
+  display: flex; flex-direction: column;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+}
+#stage::after {
+  content: ""; position: absolute; pointer-events: none;
+  inset: calc(env(safe-area-inset-top, 0px) + 6px) calc(env(safe-area-inset-right, 0px) + 6px) calc(env(safe-area-inset-bottom, 0px) + 6px) calc(env(safe-area-inset-left, 0px) + 6px);
+  border: var(--frame-w) solid var(--frame); border-radius: 28px;
+  transition: border-color .25s ease;
+}
+#stage.pulse::after { animation: pulse .42s infinite alternate ease-in-out; }
+#stage.pulse { animation: pulseFill .42s infinite alternate ease-in-out; }
+@keyframes pulse { from { border-color: var(--accent); } to { border-color: color-mix(in oklab, var(--accent) 25%, var(--bg)); } }
+@keyframes pulseFill { from { background-color: color-mix(in oklab, var(--accent) 30%, var(--bg)); } to { background-color: var(--bg); } }
+@media (prefers-reduced-motion: reduce) {
+  #stage.pulse::after, #stage.pulse { animation: none; }
+  #stage.pulse { background-color: color-mix(in oklab, var(--accent) 22%, var(--bg)); }
+  #stage.pulse::after { border-color: var(--accent); }
+  .hero-tile { animation: none; }
+}
+.leds {
+  display: grid; grid-template-columns: repeat(12, 1fr); gap: 5px;
+  margin: calc(var(--frame-w) + 20px) calc(var(--frame-w) + 22px) 0;
+  direction: ltr;
+}
+.leds i { height: 12px; border-radius: 3px; background: var(--raise); transition: background-color .08s; }
+.leds i.on.z-ok { background: var(--good); }
+.leds i.on.z-near { background: var(--slight); }
+.leds i.on.z-shift { background: var(--accent); }
+.leds i.on.z-late { background: var(--late); }
+.dash { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 0 calc(var(--frame-w) + 20px); }
+.gear { min-height: 0.9em; font-family: var(--font-num); font-weight: 600; font-size: clamp(90px, 30vmin, 220px); line-height: 0.9; color: color-mix(in oklab, var(--fg) 40%, transparent); }
+.rpm { font-family: var(--font-num); font-size: clamp(22px, 6vmin, 40px); color: color-mix(in oklab, var(--fg) 50%, transparent); }
+.rpm small, .kmh small { font-family: var(--font-body); font-size: 0.5em; margin-inline-start: 6px; }
+.kmh { font-family: var(--font-num); font-size: clamp(15px, 3.6vmin, 22px); color: color-mix(in oklab, var(--fg) 38%, transparent); }
+.hide-num .gear, .hide-num .rpm, .hide-num .kmh { visibility: hidden; }
+.dock {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  margin: 0 calc(var(--frame-w) + 18px) calc(var(--frame-w) + 18px);
+}
+.sensors { display: flex; gap: 12px; font-size: 12px; color: color-mix(in oklab, var(--fg) 55%, transparent); }
+.sensors span { display: inline-flex; align-items: center; gap: 5px; }
+.sensors b { width: 8px; height: 8px; border-radius: 50%; background: var(--line); display: inline-block; }
+.sensors b.ok { background: var(--good); } .sensors b.bad { background: var(--late); } .sensors b.wait { background: var(--slight); }
+.dock .btn { min-height: 44px; padding: 8px 16px; background: color-mix(in oklab, var(--bg) 70%, transparent); }
+.chip { border: 1px solid var(--line); border-radius: 99px; padding: 6px 12px; font-size: 13px; background: color-mix(in oklab, var(--bg) 70%, transparent); }
+.demo-tag { position: absolute; top: calc(env(safe-area-inset-top, 0px) + var(--frame-w) + 44px); inset-inline-start: calc(env(safe-area-inset-left, 0px) + var(--frame-w) + 22px); font-size: 12px; letter-spacing: .08em; color: color-mix(in oklab, var(--fg) 45%, transparent); }
+
+/* ---------- summary ---------- */
+.score-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.stat { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; min-width: 0; }
+.stat .v { font-family: var(--font-num); font-size: 30px; font-weight: 600; line-height: 1.1; }
+.stat .l { font-size: 12px; color: var(--muted); }
+.mosaic { display: grid; grid-template-columns: repeat(auto-fill, minmax(46px, 1fr)); gap: 8px; }
+.tile { aspect-ratio: 1; border-radius: 10px; border: 6px solid var(--line); background: var(--raise); padding: 0; position: relative; }
+.tile[aria-pressed="true"] { outline: 2px solid var(--fg); outline-offset: 2px; }
+.tile span { position: absolute; inset: 0; display: grid; place-items: center; font-family: var(--font-num); font-size: 12px; color: var(--fg); text-shadow: 0 1px 2px color-mix(in oklab, var(--bg) 80%, transparent); font-weight: 600; }
+.detail { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px 16px; }
+.detail div { display: flex; flex-direction: column; min-width: 0; }
+.detail .l { font-size: 12px; color: var(--muted); }
+.detail .v { font-weight: 600; }
+.bars { display: flex; flex-direction: column; gap: 10px; }
+.bar-line { display: grid; grid-template-columns: 64px 1fr; gap: 10px; align-items: center; font-size: 13px; }
+.stack { display: flex; height: 14px; border-radius: 4px; overflow: hidden; background: var(--raise); }
+.stack i { display: block; height: 100%; }
+.chart-box { overflow-x: auto; }
+canvas#chart { width: 100%; height: 200px; display: block; }
+.empty { text-align: center; padding: 28px 12px; color: var(--muted); display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.empty .tile { width: 54px; border-style: dashed; }
+
+/* ---------- settings ---------- */
+.field { display: flex; flex-direction: column; gap: 8px; }
+.field .top { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.seg { display: flex; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 3px; gap: 3px; }
+.seg button { flex: 1; border: 0; background: transparent; border-radius: 9px; padding: 10px 8px; color: var(--muted); font-weight: 600; min-height: 44px; }
+.seg button[aria-pressed="true"] { background: var(--raise); color: var(--fg); }
+input[type=range] { width: 100%; accent-color: var(--accent); }
+.switch { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.switch input { width: 22px; height: 22px; accent-color: var(--accent); }
+.gtable { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; }
+.gcell { background: var(--raise); border-radius: 10px; padding: 8px 10px; }
+.gcell .n { font-family: var(--font-num); font-size: 22px; font-weight: 600; }
+.gcell .r { font-size: 12px; color: var(--muted); }
+.gcell.miss { opacity: .45; border: 1px dashed var(--line); background: transparent; }
+.confirm { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+code, .mono { font-family: var(--font-num); font-size: 13px; background: var(--raise); padding: 2px 6px; border-radius: 6px; direction: ltr; unicode-bidi: isolate; }
+ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction: column; gap: 6px; }
+
+@media (max-width: 420px) {
+  .legend { grid-template-columns: 1fr; }
+  .hero { grid-template-columns: 1fr; }
+  .hero-tile { width: 88px; }
+  .tabs button { padding: 6px 9px; }
+  .brand { font-size: 30px; }
+}
+</style>
+
+<div id="app" dir="rtl" lang="he">
+  <header class="bar">
+    <div class="brand"><span class="mark" aria-hidden="true"></span>מאמן הילוכים</div>
+    <nav class="tabs" role="tablist" aria-label="מסכים">
+      <button role="tab" id="tab-drive" aria-selected="true" data-view="drive">נהיגה</button>
+      <button role="tab" id="tab-summary" aria-selected="false" data-view="summary">סיכום</button>
+      <button role="tab" id="tab-settings" aria-selected="false" data-view="settings">הגדרות</button>
+    </nav>
+  </header>
+
+  <!-- ===== DRIVE ===== -->
+  <main class="view" id="view-drive">
+    <div class="wrap">
+      <section class="hero">
+        <div class="hero-tile" aria-hidden="true"></div>
+        <div style="display:flex;flex-direction:column;gap:8px;min-width:0">
+          <h2>המסך הוא הפידבק</h2>
+          <p>שים את הטלפון במעמד וסע. אחרי כל העברת הילוך המסך נצבע: המסגרת מראה אם העברת בזמן, והמילוי מראה כמה חלקה הייתה ההעברה.</p>
+        </div>
+      </section>
+
+      <div class="row">
+        <button class="btn primary big" id="btn-live">התחל נסיעה</button>
+      </div>
+      <div class="row">
+        <button class="btn" id="btn-demo">הדגמה</button>
+        <label class="btn" id="lbl-file">נתח הקלטה<input type="file" id="file-in" accept="audio/*,video/*"></label>
+      </div>
+
+      <div class="card notice" id="notice" hidden>
+        <p id="notice-text"></p>
+      </div>
+      <div class="card" id="analyze-card" hidden>
+        <p id="analyze-text">מנתח את ההקלטה…</p>
+        <div class="progress"><i id="analyze-bar"></i></div>
+      </div>
+
+      <section class="legend" aria-label="מקרא צבעים">
+        <div class="card">
+          <h3>מסגרת: תזמון</h3>
+          <div class="key"><span class="sw frame c-good"></span>בזמן</div>
+          <div class="key"><span class="sw frame c-slight"></span>קצת מאוחר</div>
+          <div class="key"><span class="sw frame c-late"></span>מאוחר מדי</div>
+          <div class="key"><span class="sw frame c-early"></span>מוקדם מדי</div>
+        </div>
+        <div class="card">
+          <h3>מילוי: חלקות</h3>
+          <div class="key"><span class="sw fill c-good"></span>חלקה, הנוסעים לא הרגישו</div>
+          <div class="key"><span class="sw fill c-slight"></span>טלטלה קלה</div>
+          <div class="key"><span class="sw fill c-late"></span>קפיצה, ראשים זזו</div>
+        </div>
+        <div class="card live-keys">
+          <h3>תוך כדי נסיעה</h3>
+          <div class="keys">
+            <div class="key"><span class="sw frame c-accent"></span>מהבהב: להעביר עכשיו</div>
+            <div class="key"><span class="sw frame c-slight"></span>מתקרב לנקודת העברה</div>
+            <div class="key"><span class="sw frame c-late"></span>עברת את הנקודה</div>
+            <div class="key"><span class="sw frame c-early"></span>מנוע חנוק: להוריד הילוך</div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <!-- ===== SUMMARY ===== -->
+  <main class="view" id="view-summary" hidden>
+    <div class="wrap" id="summary-wrap"></div>
+  </main>
+
+  <!-- ===== SETTINGS ===== -->
+  <main class="view" id="view-settings" hidden>
+    <div class="wrap">
+      <div class="field">
+        <h3>מצב</h3>
+        <div class="seg" id="seg-mode">
+          <button data-mode="eco" aria-pressed="true">חסכוני</button>
+          <button data-mode="sport" aria-pressed="false">ספורטיבי</button>
+        </div>
+      </div>
+      <div class="field" id="f-eco">
+        <div class="top"><span>נקודת העברה בחסכוני</span><span class="num" id="v-eco">2500</span></div>
+        <input type="range" id="in-eco" min="1800" max="3400" step="100" value="2500">
+        <p class="small muted" id="eco-desc"></p>
+      </div>
+      <div class="field" id="f-red">
+        <div class="top"><span>קו אדום</span><span class="num" id="v-red">6500</span></div>
+        <input type="range" id="in-red" min="4500" max="8000" step="250" value="6500">
+        <p class="small muted" id="red-desc"></p>
+      </div>
+      <div class="field">
+        <h3>מספר הילוכים</h3>
+        <div class="seg" id="seg-gears">
+          <button data-n="4" aria-pressed="false">4</button>
+          <button data-n="5" aria-pressed="true">5</button>
+          <button data-n="6" aria-pressed="false">6</button>
+        </div>
+      </div>
+      <div class="field">
+        <h3>צילינדרים</h3>
+        <div class="seg" id="seg-cyl">
+          <button data-c="3" aria-pressed="false">3</button>
+          <button data-c="4" aria-pressed="true">4</button>
+          <button data-c="6" aria-pressed="false">6</button>
+        </div>
+      </div>
+      <div class="card">
+        <h3>תיקון סל"ד</h3>
+        <p class="small muted">בחניה, תן גז קבוע בניוטרל והשווה לשעון הסל"ד של הרכב. אם המספר כאן כפול או חצי, תקן פה.</p>
+        <div class="seg" id="seg-scale">
+          <button data-s="2" aria-pressed="false">כאן כפול</button>
+          <button data-s="1" aria-pressed="true">תואם</button>
+          <button data-s="0.5" aria-pressed="false">כאן חצי</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="switch"><label for="in-sound">צפצוף כשצריך להעביר</label><input type="checkbox" id="in-sound"></div>
+        <div class="switch"><label for="in-nums">להציג סל"ד והילוך על המסך</label><input type="checkbox" id="in-nums" checked></div>
+      </div>
+      <div class="card">
+        <h3>הילוכים שנלמדו</h3>
+        <p class="small muted" id="gear-status"></p>
+        <div class="gtable" id="gear-table"></div>
+        <div class="confirm" id="reset-zone">
+          <button class="btn" id="btn-reset">אפס למידה</button>
+        </div>
+      </div>
+      <div class="card">
+        <h3>להפעלה עם חיישנים</h3>
+        <p class="small">בתוך Claude אין לדף גישה למיקרופון, ל-GPS ולחיישני התנועה. כדי לנהוג איתו, שים את הקובץ <span class="mono">index.html</span> בכתובת HTTPS משלך ופתח בספארי:</p>
+        <ol class="steps small">
+          <li>צור מאגר ב-GitHub והעלה אליו את <span class="mono">index.html</span>.</li>
+          <li>ב-Settings ← Pages בחר את הענף <span class="mono">main</span>.</li>
+          <li>פתח בספארי את הכתובת שמתקבלת, ואשר מיקרופון, מיקום ותנועה.</li>
+        </ol>
+      </div>
+      <div class="card">
+        <h3>מה נמדד ואיך</h3>
+        <p class="small muted">סל"ד: מהצליל של המנוע (תדר ההצתות). הילוך: יחס סל"ד למהירות מה-GPS, נלמד לבד אחרי כמה דקות נסיעה. חלקות: קפיצות בתאוצה מהחיישן של הטלפון, ובלי חיישן לפי כמה הסל"ד צנח לפני שהקלאץ' נתפס. זו גרסה ראשונה: הספים נקבעו מראש ועוד לא כוילו ברכב אמיתי.</p>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- ===== STAGE (full screen while driving) ===== -->
+<div id="stage" hidden dir="rtl">
+  <div class="leds" id="leds" aria-hidden="true"></div>
+  <div class="demo-tag" id="demo-tag" hidden>הדגמה</div>
+  <div class="dash" id="dash">
+    <div class="gear" id="d-gear"></div>
+    <div class="rpm"><span id="d-rpm">----</span><small>סל"ד</small></div>
+    <div class="kmh"><span id="d-kmh">--</span><small>קמ"ש</small></div>
+  </div>
+  <div class="dock">
+    <div class="sensors">
+      <span><b id="s-mic"></b>קול</span>
+      <span><b id="s-gps"></b>GPS</span>
+      <span><b id="s-mot"></b>תנועה</span>
+      <span class="num" id="s-gears"></span>
+    </div>
+    <div class="row" style="flex-wrap:nowrap">
+      <button class="chip" id="d-mode">חסכוני</button>
+      <button class="btn" id="btn-stop">סיום</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/*ENGINE*/
+</script>
+<script>
+(function () {
+  'use strict';
+  const E = window.ShiftEngine;
+  const $ = (id) => document.getElementById(id);
+
+  // ---------- storage (per-viewer convenience) ----------
+  const LS = {
+    get(k, d) { try { const v = localStorage.getItem('shiftcoach.' + k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
+    set(k, v) { try { localStorage.setItem('shiftcoach.' + k, JSON.stringify(v)); } catch (e) { /* storage blocked */ } }
+  };
+  const DEFAULTS = { mode: 'eco', ecoTarget: 2500, redline: 6500, nGears: 5, cylinders: 4, rpmScale: 1, sound: false, numbers: true };
+  let settings = Object.assign({}, DEFAULTS, LS.get('settings', {}));
+  let gearModel = E.GearModel.fromJSON(LS.get('gears', null), settings.nGears);
+  let session = LS.get('session', null);
+  let run = null;
+  let feedback = null;
+
+  const GRADE_COLOR = { good: 'var(--good)', slight: 'var(--slight)', late: 'var(--late)', early: 'var(--early)' };
+  const SMOOTH_KEY = { smooth: 'good', ok: 'slight', harsh: 'late' };
+  const GRADE_WORD = { good: 'בזמן', slight: 'קצת מאוחר', late: 'מאוחר מדי', early: 'מוקדם מדי' };
+  const SMOOTH_WORD = { smooth: 'חלקה', ok: 'טלטלה קלה', harsh: 'קפיצה' };
+  const fillOf = (smooth) => smooth ? `color-mix(in oklab, var(--${SMOOTH_KEY[smooth]}) 72%, var(--bg))` : 'var(--surface)';
+  const fmt = (n) => n == null ? '–' : Math.round(n).toLocaleString('en-US');
+
+  function saveSettings() { LS.set('settings', settings); }
+  function saveGears() { if (!run || run.kind === 'live') LS.set('gears', gearModel.toJSON()); }
+
+  // ---------- views ----------
+  function show(view) {
+    for (const v of ['drive', 'summary', 'settings']) {
+      $('view-' + v).hidden = v !== view;
+      $('tab-' + v).setAttribute('aria-selected', String(v === view));
+    }
+    if (view === 'summary') renderSummary();
+    if (view === 'settings') renderSettings();
+    window.scrollTo(0, 0);
+  }
+  document.querySelectorAll('.tabs button').forEach(b => b.addEventListener('click', () => show(b.dataset.view)));
+
+  function notice(text) { $('notice').hidden = !text; $('notice-text').textContent = text || ''; }
+
+  // ---------- LEDs ----------
+  const LEDN = 12;
+  for (let i = 0; i < LEDN; i++) $('leds').appendChild(document.createElement('i'));
+  function zoneOf(v, th) { return v > th.goodHi ? 'late' : v >= th.prompt ? 'shift' : v >= th.near ? 'near' : 'ok'; }
+  function drawLeds(rpm, th) {
+    const leds = $('leds').children;
+    for (let i = 0; i < LEDN; i++) {
+      const v = th.ledLo + (i + 1) / LEDN * (th.ledHi - th.ledLo);
+      leds[i].className = (rpm != null && rpm >= v ? 'on ' : '') + 'z-' + zoneOf(v, th);
+    }
+  }
+
+  // ---------- beeps (above the analysed band, so they don't fool the mic) ----------
+  let beepCtx = null;
+  function beep(kind) {
+    if (!settings.sound) return;
+    try {
+      const ctx = (run && run.ctx) || beepCtx || (beepCtx = new (window.AudioContext || window.webkitAudioContext)());
+      const tones = kind === 'shift' ? [[2400, 0], [2400, 0.13]] : [[2100, 0]];
+      for (const [f, d] of tones) {
+        const o = ctx.createOscillator(), g = ctx.createGain();
+        o.frequency.value = f; o.type = 'sine';
+        g.gain.setValueAtTime(0.0001, ctx.currentTime + d);
+        g.gain.exponentialRampToValueAtTime(0.25, ctx.currentTime + d + 0.01);
+        g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + d + 0.09);
+        o.connect(g).connect(ctx.destination); o.start(ctx.currentTime + d); o.stop(ctx.currentTime + d + 0.1);
+      }
+    } catch (e) { /* audio unavailable */ }
+  }
+
+  // ---------- one driving run (live, demo) ----------
+  function makeCoach(gm) {
+    const c = new E.Coach(settings, gm);
+    c.onEvent = (ev) => { feedback = { ev, until: run.clock() + 3 }; };
+    c.onEventUpdate = (ev) => { if (feedback && feedback.ev === ev) feedback.until = Math.max(feedback.until, run.clock() + 2.2); };
+    return c;
+  }
+  // rpmScale 2 = "המספר כאן כפול": מכפילים את ההצתות לסיבוב, וכך הסל"ד המחושב יורד לחצי
+  function makeTracker(sampleRate, noScale) {
+    return new E.RpmTracker({ sampleRate, n: 8192, cylinders: settings.cylinders * (noScale ? 1 : settings.rpmScale) });
+  }
+
+  function enterStage(kind) {
+    $('stage').hidden = false; $('demo-tag').hidden = kind !== 'demo';
+    $('stage').classList.toggle('hide-num', !settings.numbers);
+    $('d-mode').textContent = settings.mode === 'sport' ? 'ספורטיבי' : 'חסכוני';
+    document.body.style.overflow = 'hidden';
+    feedback = null;
+    requestAnimationFrame(frame);
+  }
+
+  let lastLiveState = null;
+  function frame() {
+    if (!run) return;
+    const t = run.clock();
+    const L = run.coach.live(t);
+    const st = $('stage');
+    let fr, fi, pulse = false;
+    if (feedback && t < feedback.until) {
+      fr = GRADE_COLOR[feedback.ev.grade];
+      fi = feedback.ev.smooth ? fillOf(feedback.ev.smooth) : 'var(--surface)';
+    } else {
+      feedback = null;
+      fi = 'var(--bg)';
+      fr = { ok: 'color-mix(in oklab, var(--good) 45%, var(--bg))', near: 'var(--slight)', shift: 'var(--accent)', late: 'var(--late)', low: 'var(--early)', nosignal: 'var(--line)' }[L.state];
+      pulse = L.state === 'shift';
+    }
+    if (L.state === 'shift' && lastLiveState !== 'shift' && !feedback) beep('shift');
+    lastLiveState = L.state;
+    st.style.setProperty('--frame', fr);
+    st.style.setProperty('--fill', fi);
+    st.classList.toggle('pulse', pulse);
+    drawLeds(L.rpm, L.th);
+    $('d-gear').textContent = L.gear != null ? L.gear : '';
+    $('d-rpm').textContent = L.rpm != null ? fmt(Math.round(L.rpm / 10) * 10) : '----';
+    $('d-kmh').textContent = L.kmh != null ? Math.round(L.kmh) : '--';
+    const sens = run.sensors();
+    $('s-mic').className = sens.mic; $('s-gps').className = sens.gps; $('s-mot').className = sens.mot;
+    $('s-gears').textContent = L.gearsFound ? `${L.gearsFound}/${settings.nGears}` : '';
+    requestAnimationFrame(frame);
+  }
+
+  function stopRun() {
+    if (!run) return;
+    const r = run; run = null;
+    try { r.stop(); } catch (e) { /* already stopped */ }
+    $('stage').hidden = true; document.body.style.overflow = '';
+    if (r.coach.events.length || r.coach.trace.length > 20) {
+      session = packSession(r.coach, r.kind === 'demo' ? 'הדגמה' : 'נסיעה');
+      LS.set('session', session);
+    }
+    if (r.kind === 'live') saveGears();
+    show('summary');
+  }
+  $('btn-stop').addEventListener('click', stopRun);
+  $('d-mode').addEventListener('click', () => {
+    settings.mode = settings.mode === 'sport' ? 'eco' : 'sport'; saveSettings();
+    if (run) run.coach.configure(settings);
+    $('d-mode').textContent = settings.mode === 'sport' ? 'ספורטיבי' : 'חסכוני';
+  });
+
+  function packSession(coach, source) {
+    const tr = coach.trace;
+    const step = Math.max(1, Math.ceil(tr.length / 2400));
+    return {
+      source, date: new Date().toISOString(), th: coach.th, nGears: settings.nGears,
+      events: coach.events.map(e => ({ t: e.t, from: e.from, to: e.to, before: e.before, after: e.after, grade: e.grade, smooth: e.smooth, jerk: e.jerk, revDrop: e.revDrop, duration: e.duration, smoothSrc: e.smoothSrc })),
+      trace: tr.filter((_, i) => i % step === 0).map(p => [Math.round(p.t * 10) / 10, p.rpm]),
+      summary: coach.summary()
+    };
+  }
+
+  // ---------- LIVE: microphone + GPS + motion ----------
+  $('btn-live').addEventListener('click', () => {
+    notice('');
+    const AC = window.AudioContext || window.webkitAudioContext;
+    // iOS: every permission request must start inside this tap
+    let motionP = Promise.resolve('granted');
+    try {
+      if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') motionP = DeviceMotionEvent.requestPermission().catch(() => 'denied');
+    } catch (e) { motionP = Promise.resolve('denied'); }
+    let ctx = null;
+    try { ctx = AC ? new AC() : null; if (ctx && ctx.resume) ctx.resume(); } catch (e) { ctx = null; }
+    let micP;
+    try {
+      micP = navigator.mediaDevices && navigator.mediaDevices.getUserMedia
+        ? navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } })
+        : Promise.reject(new Error('nomedia'));
+    } catch (e) { micP = Promise.reject(e); }
+    const gps = { last: 0, denied: false, watch: null, prev: null };
+    const gpsQueue = [];
+    try {
+      if (navigator.geolocation) gps.watch = navigator.geolocation.watchPosition((pos) => {
+        const now = performance.now() / 1000;
+        const t = now - Math.max(0, (Date.now() - pos.timestamp) / 1000);
+        let v = pos.coords.speed;
+        if (!(v >= 0) && gps.prev) {
+          const R = 6371000, toR = Math.PI / 180, a = gps.prev, b = pos.coords;
+          const dLat = (b.latitude - a.lat) * toR, dLon = (b.longitude - a.lon) * toR;
+          const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * toR) * Math.cos(b.latitude * toR) * Math.sin(dLon / 2) ** 2;
+          const dist = 2 * R * Math.asin(Math.sqrt(h)), dt = t - a.t;
+          v = dt > 0.3 ? dist / dt : null;
+        }
+        gps.prev = { lat: pos.coords.latitude, lon: pos.coords.longitude, t };
+        if (v >= 0) { gps.last = now; gpsQueue.push([t, v * 3.6]); }
+      }, () => { gps.denied = true; }, { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 });
+    } catch (e) { gps.denied = true; }
+    let wake = null;
+    try { if (navigator.wakeLock) navigator.wakeLock.request('screen').then(w => { wake = w; }).catch(() => {}); } catch (e) { /* no wake lock */ }
+
+    Promise.allSettled([micP, motionP]).then(([mic, mot]) => {
+      if (mic.status !== 'fulfilled' || !ctx) {
+        if (gps.watch != null) navigator.geolocation.clearWatch(gps.watch);
+        if (wake) wake.release().catch(() => {});
+        notice('אין כאן גישה למיקרופון, ולכן אי אפשר לנהוג מהדף הזה. בתוך Claude הדף חסום למיקרופון, ל-GPS ולחיישני התנועה. כדי לנהוג איתו פתח אותו מכתובת משלך (ההוראות במסך ההגדרות). בינתיים אפשר לנסות הדגמה או לנתח הקלטה.');
+        return;
+      }
+      const stream = mic.value;
+      const src = ctx.createMediaStreamSource(stream);
+      const an = ctx.createAnalyser(); an.fftSize = 8192; an.smoothingTimeConstant = 0;
+      const mute = ctx.createGain(); mute.gain.value = 0;
+      src.connect(an); an.connect(mute); mute.connect(ctx.destination);
+      const buf = new Float32Array(8192);
+      const spec = new E.Spectrum(8192), tracker = makeTracker(ctx.sampleRate);
+      const coach = makeCoach(gearModel);
+      let lastAudio = 0, motLast = 0, hp = null;
+      const onMotion = (e) => {
+        const now = performance.now() / 1000;
+        let a = e.acceleration;
+        if (a && a.x != null) { coach.motion(now, a.x, a.y, a.z); motLast = now; return; }
+        const g = e.accelerationIncludingGravity; if (!g || g.x == null) return;
+        if (!hp) hp = [g.x, g.y, g.z];
+        for (let i = 0; i < 3; i++) hp[i] += 0.02 * ([g.x, g.y, g.z][i] - hp[i]);
+        coach.motion(now, g.x - hp[0], g.y - hp[1], g.z - hp[2]); motLast = now;
+      };
+      if (mot.value !== 'denied') window.addEventListener('devicemotion', onMotion);
+      let saveT = 0;
+      const timer = setInterval(() => {
+        an.getFloatTimeDomainData(buf);
+        const now = performance.now() / 1000;
+        while (gpsQueue.length) { const [t, k] = gpsQueue.shift(); coach.gpsFix(t, k); }
+        const tc = now - 4096 / ctx.sampleRate;
+        const priors = gearModel.complete ? gearModel.predict(coach.speedAt(tc)) : null;
+        const r = tracker.update(spec.compute(buf), tc, priors);
+        if (r.rpm) lastAudio = now;
+        coach.audio(tc, r);
+        if (now - saveT > 20) { saveT = now; saveGears(); }
+      }, 83);
+      run = {
+        kind: 'live', coach, ctx,
+        clock: () => performance.now() / 1000,
+        sensors: () => {
+          const now = performance.now() / 1000;
+          return {
+            mic: now - lastAudio < 1 ? 'ok' : 'wait',
+            gps: gps.denied ? 'bad' : now - gps.last < 3 ? 'ok' : 'wait',
+            mot: mot.value === 'denied' ? 'bad' : now - motLast < 1 ? 'ok' : 'wait'
+          };
+        },
+        stop: () => {
+          clearInterval(timer);
+          window.removeEventListener('devicemotion', onMotion);
+          if (gps.watch != null) navigator.geolocation.clearWatch(gps.watch);
+          stream.getTracks().forEach(tk => tk.stop());
+          ctx.close().catch(() => {});
+          if (wake) wake.release().catch(() => {});
+        }
+      };
+      enterStage('live');
+    });
+  });
+
+  // ---------- DEMO: simulated drive through the same pipeline ----------
+  $('btn-demo').addEventListener('click', () => {
+    notice('');
+    const sr = 48000, n = 8192, sub = 400;
+    const coach = makeCoach(new E.GearModel(settings.nGears));
+    const sim = new E.DriveSim(coach.th);
+    const synth = new E.EngineSynth(sr, { noise: 0.7, cylinders: settings.cylinders });
+    const spec = new E.Spectrum(n), tracker = makeTracker(sr, true);
+    const buf = new Float32Array(n), block = new Float32Array(sub);
+    const lagQ = [];
+    let simT = 0, nextGps = 1, nextMot = 0, lastAudio = 0;
+    const t0 = performance.now() / 1000;
+    let wake = null;
+    try { if (navigator.wakeLock) navigator.wakeLock.request('screen').then(w => { wake = w; }).catch(() => {}); } catch (e) { /* none */ }
+    const tick = () => {
+      const target = performance.now() / 1000 - t0;
+      let guard = 0;
+      while (simT < target && guard++ < 40) {
+        const dt = sub / sr;
+        sim.step(dt); simT += dt;
+        synth.render(block, sim.rpm, sim.load, sim.kmh);
+        buf.copyWithin(0, sub); buf.set(block, n - sub);
+        lagQ.push([simT, sim.kmh]); while (lagQ.length && lagQ[0][0] < simT - 2) lagQ.shift();
+        while (nextMot <= simT) { coach.motion(nextMot, 0.04 * (Math.random() - 0.5), sim.longAccel() + 0.1 * (Math.random() - 0.5), 0.04 * (Math.random() - 0.5)); nextMot += 1 / 60; }
+        if (simT >= nextGps) {
+          const old = lagQ.find(q => q[0] >= simT - 0.4) || lagQ[0];
+          coach.gpsFix(simT, Math.max(0, old[1] + (Math.random() - 0.5) * 0.6));
+          nextGps += 1;
+        }
+      }
+      if (simT < n / sr) return;
+      const tc = simT - (n / 2) / sr;
+      const priors = coach.gears.complete ? coach.gears.predict(coach.speedAt(tc)) : null;
+      const r = tracker.update(spec.compute(buf), tc, priors);
+      if (r.rpm) lastAudio = simT;
+      coach.audio(tc, r);
+    };
+    const timer = setInterval(tick, 83);
+    run = {
+      kind: 'demo', coach,
+      clock: () => simT - (n / 2) / sr,
+      sensors: () => ({ mic: simT - lastAudio < 1 ? 'ok' : 'wait', gps: 'ok', mot: 'ok' }),
+      stop: () => { clearInterval(timer); if (wake) wake.release().catch(() => {}); }
+    };
+    enterStage('demo');
+  });
+
+  // ---------- RECORDING: analyse an audio file ----------
+  $('file-in').addEventListener('change', (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    notice('');
+    const AC = window.AudioContext || window.webkitAudioContext;
+    let ctx;
+    try { ctx = new AC(); } catch (err) { notice('הדפדפן הזה לא יודע לפענח קובצי קול.'); return; }
+    $('analyze-card').hidden = false; $('analyze-text').textContent = `קורא את ${file.name}…`; $('analyze-bar').style.width = '0%';
+    file.arrayBuffer().then(ab => new Promise((res, rej) => {
+      const p = ctx.decodeAudioData(ab, res, rej); if (p && p.then) p.then(res, rej);
+    })).then(audio => {
+      const sr = audio.sampleRate, n = 8192, hop = Math.round(sr / 12);
+      const data = new Float32Array(audio.length);
+      for (let ch = 0; ch < audio.numberOfChannels; ch++) { const c = audio.getChannelData(ch); for (let i = 0; i < c.length; i++) data[i] += c[i] / audio.numberOfChannels; }
+      const spec = new E.Spectrum(n), tracker = makeTracker(sr);
+      const coach = new E.Coach(settings, new E.GearModel(settings.nGears));
+      const frames = Math.max(0, Math.floor((data.length - n) / hop));
+      if (frames < 24) throw new Error('short');
+      let f = 0;
+      $('analyze-text').textContent = `מנתח ${Math.round(audio.duration)} שניות של הקלטה…`;
+      const chunk = () => {
+        const end = Math.min(frames, f + 160);
+        for (; f < end; f++) {
+          const start = f * hop, tc = (start + n / 2) / sr;
+          coach.audio(tc, tracker.update(spec.compute(data, start), tc, null));
+        }
+        $('analyze-bar').style.width = Math.round(100 * f / frames) + '%';
+        if (f < frames) setTimeout(chunk, 0);
+        else {
+          ctx.close().catch(() => {});
+          $('analyze-card').hidden = true;
+          session = packSession(coach, 'הקלטה');
+          LS.set('session', session);
+          show('summary');
+        }
+      };
+      chunk();
+    }).catch((err) => {
+      ctx.close().catch(() => {});
+      $('analyze-card').hidden = true;
+      notice(err && err.message === 'short'
+        ? 'ההקלטה קצרה מדי. צריך לפחות כמה שניות של נסיעה.'
+        : 'לא הצלחתי לפענח את הקובץ. נסה הקלטה מאפליקציית תזכורות קוליות (m4a).');
+    });
+  });
+
+  // ---------- SUMMARY ----------
+  let selected = null;
+  function renderSummary() {
+    const w = $('summary-wrap');
+    w.textContent = '';
+    if (!session) {
+      w.innerHTML = `<div class="empty"><div class="tile" aria-hidden="true"></div><h2>עוד אין נסיעה</h2><p>הפעל הדגמה, נסיעה או ניתוח הקלטה. כל העברה תופיע כאן כריבוע: מסגרת לתזמון, מילוי לחלקות.</p><button class="btn primary" id="go-demo">הפעל הדגמה</button></div>`;
+      $('go-demo').addEventListener('click', () => { show('drive'); $('btn-demo').click(); });
+      return;
+    }
+    const s = session, sum = s.summary, ev = s.events;
+    const d = new Date(s.date);
+    const head = document.createElement('div');
+    head.style.cssText = 'display:flex;flex-direction:column;gap:6px';
+    head.innerHTML = `<h3>${s.source} · ${s.th.mode === 'sport' ? 'ספורטיבי' : 'חסכוני'} · <span class="num">${d.toLocaleDateString('he-IL')} ${d.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}</span></h3><h2>סיכום נסיעה</h2>`;
+    w.appendChild(head);
+
+    const smoothKnown = ev.filter(e => e.smooth);
+    const stats = document.createElement('div'); stats.className = 'score-row';
+    stats.innerHTML = `
+      <div class="stat"><div class="v num">${sum.score != null ? sum.score : '–'}</div><div class="l">ציון תזמון</div></div>
+      <div class="stat"><div class="v num">${smoothKnown.length ? Math.round(100 * smoothKnown.filter(e => e.smooth === 'smooth').length / smoothKnown.length) + '%' : '–'}</div><div class="l">העברות חלקות</div></div>
+      <div class="stat"><div class="v num">${ev.length}</div><div class="l">העברות</div></div>`;
+    w.appendChild(stats);
+
+    const mcard = document.createElement('section'); mcard.className = 'card';
+    mcard.innerHTML = `<h3>כל העברה: מסגרת = תזמון, מילוי = חלקות</h3>`;
+    if (!ev.length) {
+      const p = document.createElement('p'); p.className = 'muted small';
+      p.textContent = 'לא זוהו העברות הילוך בנסיעה הזו.'; mcard.appendChild(p);
+    } else {
+      const mos = document.createElement('div'); mos.className = 'mosaic';
+      ev.forEach((e, i) => {
+        const b = document.createElement('button'); b.className = 'tile';
+        b.style.borderColor = GRADE_COLOR[e.grade]; b.style.background = fillOf(e.smooth);
+        b.setAttribute('aria-pressed', String(selected === i));
+        b.setAttribute('aria-label', `העברה ${i + 1}: ${GRADE_WORD[e.grade]}, ${e.smooth ? SMOOTH_WORD[e.smooth] : 'חלקות לא ידועה'}`);
+        const sp = document.createElement('span'); sp.textContent = e.from && e.to ? `${e.from}›${e.to}` : ''; b.appendChild(sp);
+        b.addEventListener('click', () => { selected = selected === i ? null : i; renderSummary(); });
+        mos.appendChild(b);
+      });
+      mcard.appendChild(mos);
+      if (selected != null && ev[selected]) {
+        const e = ev[selected];
+        const det = document.createElement('div'); det.className = 'detail';
+        const mm = Math.floor(e.t / 60), ss = String(Math.floor(e.t % 60)).padStart(2, '0');
+        det.innerHTML = `
+          <div><span class="l">הילוך</span><span class="v num">${e.from && e.to ? e.from + ' → ' + e.to : 'לא ידוע'}</span></div>
+          <div><span class="l">תזמון</span><span class="v" style="color:${GRADE_COLOR[e.grade]}">${GRADE_WORD[e.grade]}</span></div>
+          <div><span class="l">סל"ד לפני ← אחרי</span><span class="v num">${fmt(e.before)} → ${fmt(e.after)}</span></div>
+          <div><span class="l">חלקות</span><span class="v" style="color:${e.smooth ? `var(--${SMOOTH_KEY[e.smooth]})` : 'var(--muted)'}">${e.smooth ? SMOOTH_WORD[e.smooth] : 'לא ידוע'}</span></div>
+          <div><span class="l">משך ההעברה</span><span class="v num">${e.duration != null ? e.duration.toFixed(1) + ' s' : '–'}</span></div>
+          <div><span class="l">${e.smoothSrc === 'motion' ? 'טלטלה (m/s³)' : 'צניחת סל"ד מתחת ליעד'}</span><span class="v num">${e.smoothSrc === 'motion' ? (e.jerk != null ? e.jerk : '–') : (e.revDrop != null ? e.revDrop + '%' : '–')}</span></div>
+          <div><span class="l">זמן בנסיעה</span><span class="v num">${mm}:${ss}</span></div>`;
+        mcard.appendChild(det);
+      }
+    }
+    w.appendChild(mcard);
+
+    if (ev.length) {
+      const bars = document.createElement('section'); bars.className = 'card';
+      const seg = (counts, keys, colorOf) => {
+        const total = keys.reduce((a, k) => a + (counts[k] || 0), 0) || 1;
+        return keys.map(k => counts[k] ? `<i style="width:${100 * counts[k] / total}%;background:${colorOf(k)}" title="${counts[k]}"></i>` : '').join('');
+      };
+      const sc = { smooth: 0, ok: 0, harsh: 0 }; ev.forEach(e => { if (e.smooth) sc[e.smooth]++; });
+      bars.innerHTML = `<h3>התפלגות</h3><div class="bars">
+        <div class="bar-line"><span>תזמון</span><div class="stack">${seg(sum.counts, ['good', 'slight', 'late', 'early'], k => GRADE_COLOR[k])}</div></div>
+        <div class="bar-line"><span>חלקות</span><div class="stack">${seg(sc, ['smooth', 'ok', 'harsh'], k => `var(--${SMOOTH_KEY[k]})`)}</div></div>
+      </div>
+      <p class="small muted">תזמון: <span class="num">${sum.counts.good}</span> בזמן · <span class="num">${sum.counts.slight}</span> קצת מאוחר · <span class="num">${sum.counts.late}</span> מאוחר · <span class="num">${sum.counts.early}</span> מוקדם</p>`;
+      w.appendChild(bars);
+    }
+
+    if (s.trace && s.trace.length > 8) {
+      const cc = document.createElement('section'); cc.className = 'card';
+      cc.innerHTML = `<h3>סל"ד לאורך הנסיעה</h3><div class="chart-box"><canvas id="chart" aria-label="גרף סל&quot;ד לאורך הנסיעה"></canvas></div><p class="small muted">הפס הירוק הוא חלון ההעברה. כל ריבוע הוא העברה, בגובה הסל"ד שבו העברת.</p>`;
+      w.appendChild(cc);
+      requestAnimationFrame(() => drawChart($('chart'), s));
+    }
+  }
+
+  function drawChart(cv, s) {
+    if (!cv) return;
+    const css = getComputedStyle(document.documentElement);
+    const col = (v) => css.getPropertyValue(v).trim();
+    const dpr = window.devicePixelRatio || 1;
+    const W = cv.clientWidth, H = cv.clientHeight;
+    cv.width = W * dpr; cv.height = H * dpr;
+    const g = cv.getContext('2d'); g.scale(dpr, dpr);
+    const tr = s.trace, th = s.th;
+    const tMax = Math.max(10, tr[tr.length - 1][0]);
+    const rMax = Math.max(th.slightHi + 500, ...tr.map(p => p[1] || 0), ...s.events.map(e => e.before)) * 1.05;
+    const L = 8, R = 44, T = 10, B = 22;
+    const x = (t) => L + (W - L - R) * t / tMax;
+    const y = (r) => T + (H - T - B) * (1 - r / rMax);
+    g.font = '11px "Chakra Petch", ui-monospace, monospace';
+    g.fillStyle = col('--good'); g.globalAlpha = 0.12;
+    g.fillRect(L, y(th.goodHi), W - L - R, y(th.goodLo) - y(th.goodHi)); g.globalAlpha = 1;
+    const step = rMax > 5000 ? 2000 : 1000;
+    g.strokeStyle = col('--line'); g.lineWidth = 1; g.fillStyle = col('--muted'); g.textAlign = 'left'; g.textBaseline = 'middle';
+    for (let r = step; r < rMax; r += step) {
+      g.beginPath(); g.moveTo(L, y(r) + 0.5); g.lineTo(W - R, y(r) + 0.5); g.stroke();
+      g.fillText(r >= 1000 ? (r / 1000) + 'k' : String(r), W - R + 6, y(r));
+    }
+    g.textAlign = 'center'; g.textBaseline = 'top';
+    const tStep = tMax > 600 ? 120 : tMax > 120 ? 30 : 10;
+    for (let t = 0; t <= tMax; t += tStep) {
+      const lab = tMax > 120 ? `${Math.floor(t / 60)}:${String(Math.round(t % 60)).padStart(2, '0')}` : t + 's';
+      g.fillText(lab, x(t), H - B + 6);
+    }
+    g.strokeStyle = col('--fg'); g.globalAlpha = 0.75; g.lineWidth = 1.4; g.beginPath();
+    let pen = false;
+    for (const [t, r] of tr) { if (r == null) { pen = false; continue; } if (!pen) { g.moveTo(x(t), y(r)); pen = true; } else g.lineTo(x(t), y(r)); }
+    g.stroke(); g.globalAlpha = 1;
+    for (const e of s.events) {
+      const px = x(e.t), py = y(e.before), sz = 12;
+      const fillKey = e.smooth ? SMOOTH_KEY[e.smooth] : null;
+      g.fillStyle = fillKey ? col('--' + fillKey) : col('--surface');
+      g.fillRect(px - sz / 2, py - sz / 2, sz, sz);
+      g.strokeStyle = col('--' + e.grade); g.lineWidth = 3;
+      g.strokeRect(px - sz / 2, py - sz / 2, sz, sz);
+    }
+  }
+
+  // ---------- SETTINGS ----------
+  function pressed(container, attr, val) {
+    $(container).querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(String(b.dataset[attr]) === String(val))));
+  }
+  function renderSettings() {
+    pressed('seg-mode', 'mode', settings.mode);
+    pressed('seg-gears', 'n', settings.nGears);
+    pressed('seg-cyl', 'c', settings.cylinders);
+    pressed('seg-scale', 's', settings.rpmScale);
+    $('in-eco').value = settings.ecoTarget; $('v-eco').textContent = fmt(settings.ecoTarget);
+    $('in-red').value = settings.redline; $('v-red').textContent = fmt(settings.redline);
+    const te = E.thresholds(Object.assign({}, settings, { mode: 'eco' }));
+    const ts = E.thresholds(Object.assign({}, settings, { mode: 'sport' }));
+    $('eco-desc').textContent = `בזמן: ${fmt(te.goodLo)}–${fmt(te.goodHi)}. מוקדם: מתחת ל-${fmt(te.goodLo)}, או אם אחרי ההעברה המנוע ירד מתחת ל-${fmt(te.lug)}.`;
+    $('red-desc').textContent = `בספורטיבי, בזמן: ${fmt(ts.goodLo)}–${fmt(ts.goodHi)}.`;
+    $('in-sound').checked = !!settings.sound; $('in-nums').checked = !!settings.numbers;
+    const gs = gearModel.solve();
+    $('gear-status').textContent = gs.length
+      ? (gearModel.complete ? `כל ${settings.nGears} ההילוכים נלמדו. הצבעים יודעים עכשיו גם באיזה הילוך אתה.` : `נלמדו ${gs.length} מתוך ${settings.nGears}. ממשיך ללמוד בכל נסיעה.`)
+      : 'עוד לא נלמדו הילוכים. זה קורה לבד אחרי כמה דקות נסיעה רגילה עם GPS.';
+    const tbl = $('gear-table'); tbl.textContent = '';
+    for (let i = 1; i <= settings.nGears; i++) {
+      const g = gs.find(x => x.n === i);
+      const c = document.createElement('div'); c.className = 'gcell' + (g ? '' : ' miss');
+      c.innerHTML = `<div class="n num">${i}</div><div class="r">${g ? `<span class="num">${(1000 / g.ratio).toFixed(1)}</span> קמ"ש ל-1000 סל"ד` : 'עוד לא'}</div>`;
+      tbl.appendChild(c);
+    }
+    resetZone(false);
+  }
+  function resetZone(confirming) {
+    const z = $('reset-zone'); z.textContent = '';
+    if (!confirming) {
+      const b = document.createElement('button'); b.className = 'btn'; b.textContent = 'אפס למידה';
+      b.addEventListener('click', () => resetZone(true)); z.appendChild(b);
+    } else {
+      const p = document.createElement('span'); p.className = 'small'; p.textContent = 'למחוק את ההילוכים שנלמדו?';
+      const yes = document.createElement('button'); yes.className = 'btn'; yes.style.borderColor = 'var(--late)'; yes.textContent = 'מחק';
+      const no = document.createElement('button'); no.className = 'btn'; no.textContent = 'ביטול';
+      yes.addEventListener('click', () => { gearModel.clear(); LS.set('gears', gearModel.toJSON()); renderSettings(); });
+      no.addEventListener('click', () => resetZone(false));
+      z.append(p, yes, no);
+    }
+  }
+  $('seg-mode').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; settings.mode = b.dataset.mode; saveSettings(); renderSettings(); });
+  $('seg-gears').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; settings.nGears = +b.dataset.n; gearModel.setGearCount(settings.nGears); saveSettings(); saveGears(); renderSettings(); });
+  $('seg-cyl').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; settings.cylinders = +b.dataset.c; saveSettings(); renderSettings(); });
+  $('seg-scale').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; settings.rpmScale = +b.dataset.s; saveSettings(); renderSettings(); });
+  $('in-eco').addEventListener('input', (e) => { settings.ecoTarget = +e.target.value; saveSettings(); renderSettings(); });
+  $('in-red').addEventListener('input', (e) => { settings.redline = +e.target.value; saveSettings(); renderSettings(); });
+  $('in-sound').addEventListener('change', (e) => { settings.sound = e.target.checked; saveSettings(); });
+  $('in-nums').addEventListener('change', (e) => { settings.numbers = e.target.checked; saveSettings(); });
+  window.addEventListener('resize', () => { if (!$('view-summary').hidden && session) drawChart($('chart'), session); });
+
+  show('drive');
+})();
+</script>
