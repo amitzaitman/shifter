@@ -322,7 +322,7 @@
       this.accLog = []; this.axS = [0, 0, 0]; this.axW = 0; this.cov = null; this.pc = null; this.axisMode = 'all';
       this.fastA = null; this.fastA1 = null; this.fastJ = 0; this.fastBase = null; this.fastT = null; this.fastSrc = null; this._baseT = null; this._base = 0;
       // מעמד: כמה הטלפון רועד כשהרכב עומד (RMS של התאוצה, m/s²). שינוי כיוון: וקטור הכבידה שלפיו נלמד הציר.
-      this.shake = null; this.shakeN = 0; this.gRef = null; this.remounts = 0; this.axM = 0;
+      this.shake = null; this.shakeN = 0; this.gRef = null; this.remounts = 0; this.axM = 0; this.axisOk = false;
       // מדד ISO 2631 ‏Wd + VDV (נשמר באירועים לצד ה-jerk, להשוואה בנסיעה מסומנת)
       this.wd = { x1: 0, x2: 0, y1: 0, y2: 0, lp: 0, t: null }; this.awLog = [];
       this.state = 'track'; this.drop = null; this.refractUntil = 0;
@@ -469,7 +469,7 @@
       const k = 1 / (60 * 20); this.gRef = this.gRef.map((v, i) => v + k * (u[i] - v)); const rn = Math.hypot(...this.gRef); this.gRef = this.gRef.map(v => v / rn);
       if (cos < Math.cos(20 * Math.PI / 180)) {
         this.gRef = u; this.remounts++;
-        this.axS = [0, 0, 0]; this.axW = 0; this.axM = 0; this.cov = null; this.pc = null;
+        this.axS = [0, 0, 0]; this.axW = 0; this.axM = 0; this.cov = null; this.pc = null; this.axisOk = false;
         this.fastA = null; this.lp = null; this.lp2 = null;
       }
     }
@@ -528,8 +528,12 @@
       if (this.hasGps) {
         // צריך מספיק אות: בערך עשר דגימות GPS עם תאוצה של 0.5 m/s²
         const nS = Math.hypot(this.axS[0], this.axS[1], this.axS[2]);
-        // וגם מתאם של 0.35 לפחות (כמו בטלמטיקה: לא מכיילים על נתונים שלא מסכימים)
-        return this.axW > 2.5 && nS > 0 && this.axisQuality() >= 0.35 ? this.axS.map(v => v / nS) : null;
+        // נעילה עם היסטרזיס: נפתח כשיש מספיק אות ומתאם של 0.35 לפחות, ונסגר רק מתחת ל-0.15 או כשהטלפון זז במעמד.
+        // (בנסיעה האמיתית סף קבוע של 0.35 סגר את הציון בלי סיבה בין שנייה 200 ל-260, כשהמתאם ירד ל-0.26–0.34)
+        const q = this.axisQuality();
+        if (!this.axisOk && this.axW > 2.5 && q >= 0.35) this.axisOk = true;
+        else if (this.axisOk && q < 0.15) this.axisOk = false;
+        return this.axisOk && nS > 0 ? this.axS.map(v => v / nS) : null;
       }
       return this.pc && this.cov && this.cov.w > 0.4 && (this.cov.c[0] + this.cov.c[1] + this.cov.c[2]) > 0.05 ? this.pc : null;
     }

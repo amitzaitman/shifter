@@ -108,8 +108,13 @@ if (csv) {
 if (flag('-v')) console.log('\nlive events:', JSON.stringify(rec.events || [], null, 0));
 
 // --- calibration labels (a passenger tapped smooth / ok / harsh right after each gear change) ---
-if ((rec.labels || []).length) {
-  const labs = rec.labels.map(([t, k]) => ({ t: t + offset, k }));
+// calibration truth: the passenger's taps (rec.labels, right after each change) and the driver's tags after the drive
+// (rec.feel, at the event's own time). Both are matched the same way.
+for (const [name, list] of [['passenger labels', rec.labels], ['driver tags after the drive', (rec.feel || []).map(f => [f[0], f[1]])]]) {
+ if (!(list || []).length) continue;
+ console.log(`\n=== ${name} ===`);
+ {
+  const labs = list.map(([t, k]) => ({ t: t + offset, k }));
   const evs = c.events.map(e => ({ e, t: e.t + (c.startT || 0), used: false }));
   const ex = (e) => e.jerk != null ? Math.max(0, e.jerk - (e.jerkBase || 0)) : null;
   console.log(`\nlabels      ${labs.length} (smooth ${labs.filter(l => l.k === 'smooth').length}, ok ${labs.filter(l => l.k === 'ok').length}, harsh ${labs.filter(l => l.k === 'harsh').length})`);
@@ -139,4 +144,6 @@ if ((rec.labels || []).length) {
     if (v.length) console.log(`  ${k.padEnd(7)} VDV above road (ISO Wd): min ${v[0].toFixed(2)}  median ${v[v.length >> 1].toFixed(2)}  max ${v[v.length - 1].toFixed(2)}  (n ${v.length})`);
   }
   console.log(`current thresholds: smooth < ${E.SMOOTH_TH.ok}, ok < ${E.SMOOTH_TH.harsh}, harsh above`);
+ }
 }
+if ((rec.rot || []).length) console.log(`\ngyro        ${rec.rot.length} samples recorded (not used by the engine yet)`);

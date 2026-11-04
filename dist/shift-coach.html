@@ -121,6 +121,20 @@ label.btn { position: relative; }
 .progress { height: 6px; background: var(--raise); border-radius: 99px; overflow: hidden; }
 .progress > i { display: block; height: 100%; width: 0%; background: var(--accent); transition: width .2s; }
 
+/* ---------- placement test ---------- */
+#mounttest { position: fixed; inset: 0; z-index: 30; background: var(--bg); overflow: auto; padding: calc(env(safe-area-inset-top, 0px) + 18px) max(16px, env(safe-area-inset-right, 0px)) calc(env(safe-area-inset-bottom, 0px) + 18px) max(16px, env(safe-area-inset-left, 0px)); }
+.mt-wrap { max-width: 520px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+.mt-meter { --c: var(--muted); border-radius: 22px; padding: 22px 16px; text-align: center; background: color-mix(in oklab, var(--c) 16%, var(--surface)); border: 2px solid color-mix(in oklab, var(--c) 60%, transparent); transition: background-color .3s, border-color .3s; }
+.mt-meter.good { --c: var(--good); } .mt-meter.ok { --c: var(--slight); } .mt-meter.bad { --c: var(--late); }
+.mt-num { font-family: var(--font-num); font-weight: 700; font-size: clamp(64px, 22vw, 120px); line-height: 1; color: var(--c); }
+.mt-unit { font-size: 14px; color: var(--muted); }
+.mt-word { font-size: 18px; font-weight: 600; margin-top: 6px; }
+.mt-bar { position: relative; height: 12px; border-radius: 99px; background: linear-gradient(to left, var(--good), var(--slight) 30%, var(--late) 60%); direction: rtl; }  /* 0 at the right (inline start), 2 m/s² at the left */
+.mt-bar i { position: absolute; top: -5px; width: 4px; height: 22px; border-radius: 2px; background: var(--fg); inset-inline-start: 0; transition: inset-inline-start .2s; }
+.mt-bar b { position: absolute; top: 0; width: 2px; height: 12px; background: var(--bg); }
+.mt-tries { display: flex; flex-direction: column; gap: 6px; }
+.mt-tries div { display: flex; justify-content: space-between; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; }
+
 /* ---------- driving stage ---------- */
 #stage {
   position: fixed; inset: 0; z-index: 20;
@@ -223,6 +237,13 @@ label.btn { position: relative; }
 .detail { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px 16px; }
 .detail div { display: flex; flex-direction: column; min-width: 0; }
 .detail .l { font-size: 12px; color: var(--muted); }
+.feel { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.feel .l { font-size: 13px; color: var(--muted); margin-inline-end: 4px; }
+.feel button { border: 1px solid var(--line); background: var(--raise); color: var(--fg); border-radius: 10px; font: inherit; font-weight: 600; min-height: 40px; padding: 6px 14px; }
+.feel button[aria-pressed="true"][data-k="smooth"] { background: var(--good); color: #071015; border-color: transparent; }
+.feel button[aria-pressed="true"][data-k="ok"] { background: var(--slight); color: #071015; border-color: transparent; }
+.feel button[aria-pressed="true"][data-k="harsh"] { background: var(--late); color: #071015; border-color: transparent; }
+.tile.felt::after { content: ""; position: absolute; top: 3px; inset-inline-end: 3px; width: 7px; height: 7px; border-radius: 50%; background: var(--fg); }
 .jchart { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--line); padding-top: 10px; }
 .jchart svg { display: block; }
 .jlegend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--muted); }
@@ -289,6 +310,9 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
 
       <div class="row">
         <button class="btn primary big" id="btn-live">התחל נסיעה</button>
+      </div>
+      <div class="row">
+        <button class="btn" id="btn-mount">בדיקת מיקום לטלפון</button>
       </div>
       <div class="row">
         <button class="btn" id="btn-demo">הדגמה</button>
@@ -402,9 +426,22 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
         <h3>מה נמדד ואיך</h3>
         <p class="small muted">סל"ד: מהצליל של המנוע (תדר ההצתות). הילוך: יחס סל"ד למהירות מה-GPS, נלמד לבד אחרי כמה דקות נסיעה. חלקות: קפיצות בתאוצה מהחיישן של הטלפון, ובלי חיישן לפי כמה הסל"ד צנח לפני שהקלאץ' נתפס. זו גרסה ראשונה: הספים נקבעו מראש ועוד לא כוילו ברכב אמיתי.</p>
       </div>
-      <p class="small muted" style="text-align:center">גרסה <span class="num">04.11.2026 12:37</span></p>
+      <p class="small muted" style="text-align:center">גרסה <span class="num">04.11.2026 19:35</span></p>
     </div>
   </main>
+</div>
+
+<!-- ===== PLACEMENT TEST: how much the phone shakes at standstill, live ===== -->
+<div id="mounttest" hidden dir="rtl">
+  <div class="mt-wrap">
+    <h2>בדיקת מיקום לטלפון</h2>
+    <p class="muted">עצור עם מנוע דולק. שים את הטלפון במקום שאתה רוצה לבדוק, אל תיגע בו, וחכה כמה שניות. כמה שהמספר נמוך יותר, המדידה של החלקות מדויקת יותר. נסה כמה מקומות: המעמד, מחזיק הכוסות על שטיחון גומי, המגש ליד ידית ההילוכים.</p>
+    <div class="mt-meter" id="mt-meter"><div class="mt-num num" id="mt-num">–</div><div class="mt-unit">m/s² רעד</div><div class="mt-word" id="mt-word">מחכה לחיישן…</div></div>
+    <div class="mt-bar" aria-hidden="true"><i id="mt-fill"></i><b style="inset-inline-start:calc(100% * 0.3 / 2)"></b><b style="inset-inline-start:calc(100% * 0.6 / 2)"></b></div>
+    <p class="small muted">סיבוב (מטוטלת במעמד): <span class="num"><span id="mt-rot">–</span> °/s</span>. בנסיעה הראשונה שלך הרעד בעמידה היה <span class="num">1.65</span>.</p>
+    <div class="mt-tries" id="mt-tries"></div>
+    <div class="row"><button class="btn primary" id="mt-save">שמור את המיקום הזה</button><button class="btn" id="mt-close">סגור</button></div>
+  </div>
 </div>
 
 <!-- ===== STAGE (full screen while driving) ===== -->
@@ -778,7 +815,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
       this.accLog = []; this.axS = [0, 0, 0]; this.axW = 0; this.cov = null; this.pc = null; this.axisMode = 'all';
       this.fastA = null; this.fastA1 = null; this.fastJ = 0; this.fastBase = null; this.fastT = null; this.fastSrc = null; this._baseT = null; this._base = 0;
       // מעמד: כמה הטלפון רועד כשהרכב עומד (RMS של התאוצה, m/s²). שינוי כיוון: וקטור הכבידה שלפיו נלמד הציר.
-      this.shake = null; this.shakeN = 0; this.gRef = null; this.remounts = 0; this.axM = 0;
+      this.shake = null; this.shakeN = 0; this.gRef = null; this.remounts = 0; this.axM = 0; this.axisOk = false;
       // מדד ISO 2631 ‏Wd + VDV (נשמר באירועים לצד ה-jerk, להשוואה בנסיעה מסומנת)
       this.wd = { x1: 0, x2: 0, y1: 0, y2: 0, lp: 0, t: null }; this.awLog = [];
       this.state = 'track'; this.drop = null; this.refractUntil = 0;
@@ -925,7 +962,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
       const k = 1 / (60 * 20); this.gRef = this.gRef.map((v, i) => v + k * (u[i] - v)); const rn = Math.hypot(...this.gRef); this.gRef = this.gRef.map(v => v / rn);
       if (cos < Math.cos(20 * Math.PI / 180)) {
         this.gRef = u; this.remounts++;
-        this.axS = [0, 0, 0]; this.axW = 0; this.axM = 0; this.cov = null; this.pc = null;
+        this.axS = [0, 0, 0]; this.axW = 0; this.axM = 0; this.cov = null; this.pc = null; this.axisOk = false;
         this.fastA = null; this.lp = null; this.lp2 = null;
       }
     }
@@ -984,8 +1021,12 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
       if (this.hasGps) {
         // צריך מספיק אות: בערך עשר דגימות GPS עם תאוצה של 0.5 m/s²
         const nS = Math.hypot(this.axS[0], this.axS[1], this.axS[2]);
-        // וגם מתאם של 0.35 לפחות (כמו בטלמטיקה: לא מכיילים על נתונים שלא מסכימים)
-        return this.axW > 2.5 && nS > 0 && this.axisQuality() >= 0.35 ? this.axS.map(v => v / nS) : null;
+        // נעילה עם היסטרזיס: נפתח כשיש מספיק אות ומתאם של 0.35 לפחות, ונסגר רק מתחת ל-0.15 או כשהטלפון זז במעמד.
+        // (בנסיעה האמיתית סף קבוע של 0.35 סגר את הציון בלי סיבה בין שנייה 200 ל-260, כשהמתאם ירד ל-0.26–0.34)
+        const q = this.axisQuality();
+        if (!this.axisOk && this.axW > 2.5 && q >= 0.35) this.axisOk = true;
+        else if (this.axisOk && q < 0.15) this.axisOk = false;
+        return this.axisOk && nS > 0 ? this.axS.map(v => v / nS) : null;
       }
       return this.pc && this.cov && this.cov.w > 0.4 && (this.cov.c[0] + this.cov.c[1] + this.cov.c[2]) > 0.05 ? this.pc : null;
     }
@@ -1835,7 +1876,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     if (r.kind === 'live') saveGears();
     if (r.recorder) {
       recording = { state: 'pending' };
-      r.recorder.finish(session).then(file => { recording = { state: 'ready', file }; if (currentView === 'summary') renderSummary(); })
+      r.recorder.finish(session).then(({ rec, name, t0 }) => { recording = { state: 'ready', rec, name, t0, session }; if (currentView === 'summary') renderSummary(); })
         .catch(err => { recording = { state: 'error', msg: String(err && err.message || err) }; if (currentView === 'summary') renderSummary(); });
     }
     show('summary');
@@ -1860,7 +1901,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     const step = Math.max(1, Math.ceil(tr.length / 2400));
     return {
       source, date: new Date().toISOString(), th: coach.th, nGears: settings.nGears,
-      events: coach.events.map(e => ({ kind: e.kind || 'up', t: e.t, from: e.from, to: e.to, before: e.before, after: e.after, grade: e.grade, smooth: e.smooth, jerk: e.jerk, jerkBase: e.jerkBase, vdv: e.vdv, vdvBase: e.vdvBase, axis: e.axis, trace: e.trace, revDrop: e.revDrop, duration: e.duration, smoothSrc: e.smoothSrc })),
+      events: coach.events.map(e => ({ kind: e.kind || 'up', t: e.t, tAbs: e.t + (coach.startT || 0), from: e.from, to: e.to, before: e.before, after: e.after, grade: e.grade, smooth: e.smooth, jerk: e.jerk, jerkBase: e.jerkBase, vdv: e.vdv, vdvBase: e.vdvBase, axis: e.axis, trace: e.trace, revDrop: e.revDrop, duration: e.duration, smoothSrc: e.smoothSrc })),
       trace: tr.filter((_, i) => i % step === 0).map(p => [Math.round(p.t * 10) / 10, p.rpm]),
       mountShake: coach.mountShake() != null ? Math.round(coach.mountShake() * 100) / 100 : null, remounts: coach.remounts || 0,
       summary: coach.summary()
@@ -1890,7 +1931,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
       try { return new MediaRecorder(stream, Object.assign({ audioBitsPerSecond: 96000 }, mime ? { mimeType: mime } : {})); }
       catch (e) { try { return new MediaRecorder(stream); } catch (e2) { return null; } }
     };
-    const gpsLog = [], motLog = [], live = [], segs = [], labels = [];
+    const gpsLog = [], motLog = [], live = [], segs = [], labels = [], rotLog = [];
     let t0 = null, motSrc = null, cur = null, stopping = false;
     const now = () => performance.now() / 1000;
     const rel = (t) => t - (t0 == null ? now() : t0);
@@ -1900,7 +1941,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
       const seg = { mr, chunks: [], t0: null, started: now(), lastData: now(), done: null };
       seg.done = new Promise(res => { mr.onstop = () => { seg.mime = mr.mimeType || mime || (seg.chunks[0] && seg.chunks[0].type) || 'audio/mp4'; res(); }; });
       mr.ondataavailable = (e) => { if (e.data && e.data.size) { seg.chunks.push(e.data); seg.lastData = now(); } };
-      mr.onstart = () => { const n = now(); if (t0 == null) { t0 = n; gpsLog.length = motLog.length = live.length = labels.length = 0; } seg.t0 = n - t0; seg.started = n; seg.lastData = n; };
+      mr.onstart = () => { const n = now(); if (t0 == null) { t0 = n; gpsLog.length = motLog.length = live.length = labels.length = rotLog.length = 0; } seg.t0 = n - t0; seg.started = n; seg.lastData = n; };
       try { mr.start(1000); } catch (e) { return null; }
       segs.push(seg); cur = seg; return seg;
     }
@@ -1921,6 +1962,8 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     return {
       gps(q) { gpsLog.push([r3(rel(q[0])), Math.round(q[1] * 100) / 100, q[2] != null ? +q[2].toFixed(6) : null, q[3] != null ? +q[3].toFixed(6) : null, q[4] != null ? Math.round(q[4]) : null]); },
       // [t, ax, ay, az] or [t, ax, ay, az, gx, gy, gz]
+      rot(t, al, be, ga) { rotLog.push([r3(rel(t)), Math.round(al * 10) / 10, Math.round(be * 10) / 10, Math.round(ga * 10) / 10]); },
+      get t0() { return t0; },
       motion(t, a, gv, src) { motSrc = src; motLog.push([r3(rel(t)), r3(a[0]), r3(a[1]), r3(a[2])].concat(gv ? gv.map(v => Math.round(v * 100) / 100) : [])); },
       frame(tc, rpm) { live.push([r3(rel(tc)), rpm ? Math.round(rpm) : null]); },
       label(t, k) { labels.push([r3(rel(t)), k]); },
@@ -1935,16 +1978,23 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
               const rec = {
                 format: 'shift-coach-recording', v: 2, startedAt, userAgent: navigator.userAgent,
                 settings: settingsAtStart, sampleRate, fftN: 8192, motionSrc: motSrc, gearsAtStart,
-                gps: gpsLog, motion: motLog, live, labels, events: sess ? sess.events : [],
+                gps: gpsLog, motion: motLog, rot: rotLog, live, labels, events: sess ? sess.events : [],
                 audio: { mime: parts[0].mime, bytes: segments.reduce((a, x) => a + x.bytes, 0), segments }
               };
               const d = new Date(startedAt), pad = (x) => String(x).padStart(2, '0');
               const name = `drive-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}.json`;
-              return new File([JSON.stringify(rec)], name, { type: 'application/json' });
+              return { rec, name, t0 };
             });
         });
       }
     };
+  }
+  // the file is built when sharing, so the driver's after-the-drive tags (how each change felt) go in too:
+  // rec.feel = [[t on the recording clock, 'smooth'|'ok'|'harsh', kind, engine grade]]
+  function recordingFile() {
+    const rc = recording, rec = rc.rec;
+    rec.feel = (rc.session && rc.session.events || []).filter(e => e.feel && e.tAbs != null).map(e => [Math.round((e.tAbs - rc.t0) * 1000) / 1000, e.feel, e.kind || 'up', e.smooth || null]);
+    return new File([JSON.stringify(rec)], rc.name, { type: 'application/json' });
   }
   function shareRecording(file) {
     const data = { files: [file], title: 'הקלטת נסיעה' };
@@ -1957,6 +2007,47 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     a.href = url; a.download = file.name; document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 30000);
   }
+
+  // ---------- PLACEMENT TEST ----------
+  // RMS of the user acceleration over the last 3 s, at standstill: all of it is the phone shaking, none is the car.
+  // Good < 0.3, ok < MOUNT_SHAKY (0.6), above that the mount hides small jolts. Both cut-offs are guesses.
+  (function () {
+    let buf = [], rot = [], onM = null, tries = [];
+    const word = (v) => v < 0.3 ? ['good', 'יציב, מצוין'] : v < MOUNT_SHAKY ? ['ok', 'סביר'] : ['bad', 'רועד מדי'];
+    const draw = () => {
+      const now = performance.now() / 1000;
+      buf = buf.filter(q => q[0] > now - 3); rot = rot.filter(q => q[0] > now - 3);
+      if (buf.length < 30) return;
+      const v = Math.sqrt(buf.reduce((s, q) => s + q[1], 0) / buf.length), rv = Math.sqrt(rot.reduce((s, q) => s + q[1], 0) / (rot.length || 1));
+      const [cls, w] = word(v);
+      $('mt-meter').className = 'mt-meter ' + cls; $('mt-num').textContent = v.toFixed(2); $('mt-word').textContent = w;
+      $('mt-fill').style.insetInlineStart = `calc(${Math.min(100, v / 2 * 100).toFixed(1)}% - 2px)`;
+      $('mt-rot').textContent = rot.length ? rv.toFixed(1) : '–';
+      $('mt-save').dataset.v = v.toFixed(2);
+    };
+    let timer = null;
+    $('btn-mount').addEventListener('click', () => {
+      let p = Promise.resolve('granted');
+      try { if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') p = DeviceMotionEvent.requestPermission().catch(() => 'denied'); } catch (e) { p = Promise.resolve('denied'); }
+      $('mounttest').hidden = false; document.body.style.overflow = 'hidden';
+      p.then(res => {
+        if (res === 'denied') { $('mt-word').textContent = 'אין גישה לחיישן התנועה. בתוך Claude הדף חסום. פתח אותו מהכתובת שלך.'; return; }
+        onM = (e) => { const a = e.acceleration, now = performance.now() / 1000; if (a && a.x != null) buf.push([now, a.x * a.x + a.y * a.y + a.z * a.z]); const r = e.rotationRate; if (r && r.alpha != null) rot.push([now, r.alpha * r.alpha + r.beta * r.beta + r.gamma * r.gamma]); };
+        window.addEventListener('devicemotion', onM);
+        timer = setInterval(draw, 250);
+      });
+    });
+    $('mt-save').addEventListener('click', (e) => {
+      const v = e.currentTarget.dataset.v; if (!v) return;
+      tries.push({ n: tries.length + 1, v: +v });
+      const best = Math.min(...tries.map(x => x.v));
+      $('mt-tries').innerHTML = tries.map(x => `<div><span>מיקום ${x.n}${x.v === best ? ' · הכי יציב' : ''}</span><span class="num">${x.v.toFixed(2)}</span></div>`).join('');
+    });
+    $('mt-close').addEventListener('click', () => {
+      $('mounttest').hidden = true; document.body.style.overflow = '';
+      if (onM) window.removeEventListener('devicemotion', onM); onM = null; clearInterval(timer); buf = []; rot = [];
+    });
+  })();
 
   // ---------- LIVE: microphone + GPS + motion ----------
   $('btn-live').addEventListener('click', () => {
@@ -2022,6 +2113,8 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
         const now = performance.now() / 1000;
         let a = e.acceleration;
         const g = e.accelerationIncludingGravity, hasG = g && g.x != null;
+        // gyro (deg/s), recorded for calibration: the phone swinging on its mount shows up here directly
+        const rr = e.rotationRate; if (recorder && rr && rr.alpha != null) recorder.rot(now, rr.alpha, rr.beta, rr.gamma);
         if (a && a.x != null) {
           if (hasG) feedMotion(now, [a.x, a.y, a.z], [g.x - a.x, g.y - a.y, g.z - a.z], 'acceleration');
           else feedMotion(now, [a.x, a.y, a.z], null, 'acceleration');
@@ -2215,8 +2308,9 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     if (recording.state === 'pending') rc.innerHTML = `<h3>הקלטת הנסיעה</h3><p class="muted">מכין את הקובץ…</p>`;
     else if (recording.state === 'error') rc.innerHTML = `<h3>הקלטת הנסיעה</h3><p class="muted">ההקלטה נכשלה (${recording.msg}).</p>`;
     else {
-      rc.innerHTML = `<h3>הקלטת הנסיעה</h3><p class="small muted">הקובץ <span class="num">${recording.file.name}</span> (<span class="num">${(recording.file.size / 1048576).toFixed(1)} MB</span>) כולל את הקול, ה-GPS והתאוצה. הוא יאבד אם תסגור את הדף.</p><button class="btn primary" id="btn-share-rec">שתף הקלטה</button>`;
-      rc.querySelector('#btn-share-rec').addEventListener('click', () => shareRecording(recording.file));
+      const nFeel = (recording.session && recording.session.events || []).filter(e => e.feel).length;
+      rc.innerHTML = `<h3>הקלטת הנסיעה</h3><p class="small muted">הקובץ <span class="num">${recording.name}</span> (כ-<span class="num">${(recording.rec.audio.bytes * 1.45 / 1048576).toFixed(1)} MB</span>) כולל את הקול, ה-GPS, התאוצה והג'ירוסקופ. הוא יאבד אם תסגור את הדף.</p><p class="small muted">לפני השיתוף, לחץ על העברות בריבועים למטה וסמן איך הן הרגישו. סומנו: <span class="num">${nFeel}</span>.</p><button class="btn primary" id="btn-share-rec">שתף הקלטה</button>`;
+      rc.querySelector('#btn-share-rec').addEventListener('click', () => shareRecording(recordingFile()));
     }
     return rc;
   }
@@ -2261,6 +2355,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
       ev.forEach((e, i) => {
         const b = document.createElement('button'); b.className = 'tile';
         b.style.borderColor = e.grade ? GRADE_COLOR[e.grade] : 'var(--line)'; b.style.background = fillOf(e.smooth);
+        if (e.feel) b.classList.add('felt');
         b.setAttribute('aria-pressed', String(selected === i));
         b.setAttribute('aria-label', `${KIND_WORD[e.kind || 'up']} ${i + 1}: ${e.smooth ? SMOOTH_WORD[e.smooth] : 'חלקות לא ידועה'}${e.grade ? ', ' + GRADE_WORD[e.grade] : ''}`);
         const sp = document.createElement('span'); sp.textContent = e.kind === 'launch' ? '0›1' : e.from && e.to ? `${e.from}›${e.to}` : e.kind === 'down' ? '↓' : ''; b.appendChild(sp);
@@ -2270,6 +2365,11 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
       mcard.appendChild(mos);
       if (selected != null && ev[selected]) {
         const e = ev[selected];
+        // the driver's own feeling about this change (calibration truth, goes into the recording file)
+        const fl = document.createElement('div'); fl.className = 'feel';
+        fl.innerHTML = `<span class="l">איך זה הרגיש לך?</span>` + [['smooth', 'חלקה'], ['ok', 'טלטלה'], ['harsh', 'קפיצה']].map(([k, w]) => `<button data-k="${k}" aria-pressed="${e.feel === k}">${w}</button>`).join('');
+        fl.addEventListener('click', (x) => { const b = x.target.closest('button'); if (!b) return; e.feel = e.feel === b.dataset.k ? null : b.dataset.k; LS.set('session', session); renderSummary(); });
+        mcard.appendChild(fl);
         const det = document.createElement('div'); det.className = 'detail';
         const mm = Math.floor(e.t / 60), ss = String(Math.floor(e.t % 60)).padStart(2, '0');
         det.innerHTML = `
