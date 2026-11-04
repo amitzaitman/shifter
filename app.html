@@ -624,7 +624,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     const step = Math.max(1, Math.ceil(tr.length / 2400));
     return {
       source, date: new Date().toISOString(), th: coach.th, nGears: settings.nGears,
-      events: coach.events.map(e => ({ kind: e.kind || 'up', t: e.t, from: e.from, to: e.to, before: e.before, after: e.after, grade: e.grade, smooth: e.smooth, jerk: e.jerk, revDrop: e.revDrop, duration: e.duration, smoothSrc: e.smoothSrc })),
+      events: coach.events.map(e => ({ kind: e.kind || 'up', t: e.t, from: e.from, to: e.to, before: e.before, after: e.after, grade: e.grade, smooth: e.smooth, jerk: e.jerk, jerkBase: e.jerkBase, axis: e.axis, revDrop: e.revDrop, duration: e.duration, smoothSrc: e.smoothSrc })),
       trace: tr.filter((_, i) => i % step === 0).map(p => [Math.round(p.t * 10) / 10, p.rpm]),
       summary: coach.summary()
     };
@@ -1000,7 +1000,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
           <div><span class="l">סל"ד לפני ← אחרי</span><span class="v num">${e.before != null ? fmt(e.before) + ' → ' + fmt(e.after) : '–'}</span></div>
           <div><span class="l">חלקות</span><span class="v" style="color:${e.smooth ? `var(--${SMOOTH_KEY[e.smooth]})` : 'var(--muted)'}">${e.smooth ? SMOOTH_WORD[e.smooth] : 'לא ידוע'}</span></div>
           <div><span class="l">משך ההעברה</span><span class="v num">${e.duration != null ? e.duration.toFixed(1) + ' s' : '–'}</span></div>
-          <div><span class="l">${e.smoothSrc === 'motion' ? 'טלטלה (m/s³)' : 'פער סל"ד מהיעד'}</span><span class="v num">${e.smoothSrc === 'motion' ? (e.jerk != null ? e.jerk : '–') : (e.revDrop != null ? e.revDrop + '%' : '–')}</span></div>
+          <div><span class="l">${e.smoothSrc === 'motion' ? 'טלטלה (m/s³)' : 'פער סל"ד מהיעד'}</span><span class="v num">${e.smoothSrc === 'motion' ? (e.jerk != null ? e.jerk + (e.jerkBase ? ` (כביש ${e.jerkBase})` : '') : '–') : (e.revDrop != null ? e.revDrop + '%' : '–')}</span></div>
           <div><span class="l">זמן בנסיעה</span><span class="v num">${mm}:${ss}</span></div>`;
         mcard.appendChild(det);
       }

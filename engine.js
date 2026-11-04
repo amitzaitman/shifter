@@ -315,6 +315,8 @@
       this.lagCands = [0, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2];
       this.lagScore = this.lagCands.map(() => 0); this.lagN = 0; this.lag = 0.4;
       this.jerk = []; this.lp = null; this.lastMotion = null; this.gv = null;
+      // ציר הנסיעה בתוך מישור הטלפון: S = Σ(תאוצת GPS × וקטור התאוצה הממוצע), W = Σ(תאוצת GPS²). PCA כגיבוי בלי GPS.
+      this.accLog = []; this.axS = [0, 0, 0]; this.axW = 0; this.cov = null; this.pc = null; this.axisMode = 'all';
       this.state = 'track'; this.drop = null; this.refractUntil = 0;
       this.events = []; this.pending = [];
       this.lowSince = null; this.trace = []; this.lastTraceT = -1e9; this.startT = null;
@@ -344,6 +346,7 @@
       if (!(kmh >= 0)) return;
       this.hasGps = true;
       this.gps.push({ t, kmh });
+      this.learnAxis();
       while (this.gps.length && this.gps[0].t < t - 15) this.gps.shift();
       const g = this.gps; if (g.length < 2) return;
       const a = g[g.length - 2], b = g[g.length - 1];
@@ -387,19 +390,70 @@
         this.gv = this.gv ? [this.gv[0] + b * (gx - this.gv[0]), this.gv[1] + b * (gy - this.gv[1]), this.gv[2] + b * (gz - this.gv[2])] : [gx, gy, gz];
       }
       const gn = this.gv ? Math.hypot(this.gv[0], this.gv[1], this.gv[2]) : 0;
-      if (gn > 3) {                       // רק אם הכבידה הגיונית (~9.8)
+      const horiz = gn > 3;               // רק אם הכבידה הגיונית (~9.8)
+      if (horiz) {
         const ux = this.gv[0] / gn, uy = this.gv[1] / gn, uz = this.gv[2] / gn;
         const d = ax * ux + ay * uy + az * uz;
         ax -= d * ux; ay -= d * uy; az -= d * uz;
+        this.accLog.push({ t, a: [ax, ay, az] });
+        while (this.accLog.length && this.accLog[0].t < t - 15) this.accLog.shift();
+        if (!this.hasGps) this.learnPCA(t, ax, ay, az);
       }
-      if (!this.lp) { this.lp = [ax, ay, az]; this.lastMotion = t; return; }
+      // רק הרכיב לאורך ציר הנסיעה (אם נלמד), כדי שפניות לא ייספרו כטלטלה
+      const f = horiz && this.s.jerkAxis !== false ? this.forwardAxis() : null, mode = f ? (this.axW > 0 && this.hasGps ? 'gps' : 'pca') : 'all';
+      if (mode !== this.axisMode) { this.axisMode = mode; this.lp = null; }
+      const v = f ? [ax * f[0] + ay * f[1] + az * f[2], 0, 0] : [ax, ay, az];
+      if (!this.lp) { this.lp = v; this.lastMotion = t; return; }
       const dt = t - this.lastMotion; if (dt <= 0) return;
       const a = Math.min(1, dt / 0.12);
-      const p = this.lp, nx = p[0] + a * (ax - p[0]), ny = p[1] + a * (ay - p[1]), nz = p[2] + a * (az - p[2]);
+      const p = this.lp, nx = p[0] + a * (v[0] - p[0]), ny = p[1] + a * (v[1] - p[1]), nz = p[2] + a * (v[2] - p[2]);
       const j = Math.hypot(nx - p[0], ny - p[1], nz - p[2]) / dt;
       this.lp = [nx, ny, nz]; this.lastMotion = t;
       this.jerk.push({ t, j });
-      while (this.jerk.length && this.jerk[0].t < t - 8) this.jerk.shift();
+      while (this.jerk.length && this.jerk[0].t < t - 15) this.jerk.shift();
+    }
+    // כל זוג דגימות GPS: תאוצה לאורך הדרך (Δv/Δt) מול הממוצע של וקטור התאוצה האופקי באותו פרק זמן (אחרי תיקון ההשהיה).
+    // הווקטור שמתואם הכי חזק עם תאוצת ה-GPS הוא ציר הנסיעה. שוכחים לאט (~50 שנ'), למקרה שהטלפון זז במעמד.
+    learnAxis() {
+      const g = this.gps; if (g.length < 2 || !this.accLog.length) return;
+      const a = g[g.length - 2], b = g[g.length - 1], dt = b.t - a.t;
+      if (dt <= 0.3 || dt > 2.5 || a.kmh < 3 || b.kmh < 3) return;
+      const ag = (b.kmh - a.kmh) / 3.6 / dt;
+      const t0 = a.t - this.lag, t1 = b.t - this.lag, m = [0, 0, 0]; let n = 0;
+      for (const e of this.accLog) if (e.t >= t0 && e.t <= t1) { m[0] += e.a[0]; m[1] += e.a[1]; m[2] += e.a[2]; n++; }
+      if (n < 8) return;
+      const k = 0.98;
+      this.axS = this.axS.map((v, i) => v * k + ag * m[i] / n); this.axW = this.axW * k + ag * ag;
+    }
+    // בלי GPS: הכיוון שבו התאוצה האופקית משתנה הכי הרבה (בדרך כלל האצה ובלימה). פחות אמין: פניות מבלבלות אותו.
+    learnPCA(t, x, y, z) {
+      const k = 1 / (60 * 60);  // ~דקה של זיכרון ב-60Hz
+      if (!this.cov) this.cov = { c: [0, 0, 0, 0, 0, 0], w: 0 };
+      const c = this.cov.c, v = [x * x, y * y, z * z, x * y, x * z, y * z];
+      for (let i = 0; i < 6; i++) c[i] += k * (v[i] - c[i]);
+      this.cov.w = Math.min(1, this.cov.w + k);
+      let e = this.pc || [1, 0.7, 0.4];
+      for (let it = 0; it < 3; it++) {
+        const r = [c[0] * e[0] + c[3] * e[1] + c[4] * e[2], c[3] * e[0] + c[1] * e[1] + c[5] * e[2], c[4] * e[0] + c[5] * e[1] + c[2] * e[2]];
+        const nn = Math.hypot(r[0], r[1], r[2]); if (!(nn > 0)) return; e = r.map(q => q / nn);
+      }
+      this.pc = e;
+    }
+    forwardAxis() {
+      if (this.hasGps) {
+        // צריך מספיק אות: בערך עשר דגימות GPS עם תאוצה של 0.5 m/s²
+        const nS = Math.hypot(this.axS[0], this.axS[1], this.axS[2]);
+        return this.axW > 2.5 && nS > 0 ? this.axS.map(v => v / nS) : null;
+      }
+      return this.pc && this.cov && this.cov.w > 0.4 && (this.cov.c[0] + this.cov.c[1] + this.cov.c[2]) > 0.05 ? this.pc : null;
+    }
+    // רמת הטלטלה הרגילה של הכביש לפני האירוע: חציון של המקסימום בכל חצי שנייה, בעשר השניות שלפני t
+    jerkBaseline(t) {
+      const bins = new Map();
+      for (const e of this.jerk) if (e.t >= t - 10 && e.t < t - 0.5) { const k = Math.floor(e.t * 2); bins.set(k, Math.max(bins.get(k) || 0, e.j)); }
+      if (bins.size < 6) return 0;
+      const v = [...bins.values()].sort((x, y) => x - y);
+      return v[v.length >> 1];
     }
 
     // --- עזרים ---
@@ -576,9 +630,12 @@
       if (!this.pending.length) return;
       this.pending = this.pending.filter(p => {
         if (t < p.t1) return true;
-        const j = this.maxJerk(p.t0, p.t1);
+        const j = this.maxJerk(p.t0, p.t1), base = this.s.jerkBaseline === false ? 0 : this.jerkBaseline(p.t0);
+        // הציון לפי מה שמעל לרעש הרגיל של הכביש
         p.ev.jerk = j != null ? Math.round(j * 10) / 10 : null;
-        p.ev.smooth = j != null ? smoothLabel(j) : p.fallback;
+        p.ev.jerkBase = j != null ? Math.round(base * 10) / 10 : null;
+        p.ev.axis = this.axisMode;
+        p.ev.smooth = j != null ? smoothLabel(Math.max(0, j - base)) : p.fallback;
         p.ev.smoothSrc = j != null ? 'motion' : p.fallback ? 'sound' : null;
         if (this.onEventUpdate) this.onEventUpdate(p.ev);
         return false;

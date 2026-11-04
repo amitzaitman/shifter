@@ -1,7 +1,8 @@
 const E = require(require('path').join(__dirname, '..', 'engine.js'));
 
-function run({ noise = 1, mode = 'eco', seconds = 130, useGps = true, useMotion = true, n = 8192, verbose = false, to = {} }) {
-  const settings = { mode, ecoTarget: 2500, redline: 6500, nGears: 5, cylinders: 4 };
+// phone: טלפון מוטה ומסובב במעמד (הכבידה מועברת ל-coach). turns: פניות חדות. road: עוצמת רעש הכביש (m/s²). passG: להעביר כבידה.
+function run({ noise = 1, mode = 'eco', seconds = 130, useGps = true, useMotion = true, n = 8192, verbose = false, to = {}, phone = false, turns = false, road = 0, passG = true, cs = {} }) {
+  const settings = Object.assign({ mode, ecoTarget: 2500, redline: 6500, nGears: 5, cylinders: 4 }, cs);
   const coach = new E.Coach(settings, new E.GearModel(5));
   const sim = new E.DriveSim(coach.th);
   const sr = 48000, hop = 4000, sub = 400;
@@ -11,7 +12,14 @@ function run({ noise = 1, mode = 'eco', seconds = 130, useGps = true, useMotion 
   const buf = new Float32Array(n);
   const block = new Float32Array(sub);
   const truth = []; // {t, rpm}
-  let t = 0, nextGps = 1.0, nextMot = 0;
+  let t = 0, nextGps = 1.0, nextMot = 0, roadN = [0, 0, 0];
+  // מסגרת הטלפון: מוטה 35° אחורה ומסובב 25° סביב הציר האנכי
+  const PH = (() => {
+    const p = 35 * Math.PI / 180, y = 25 * Math.PI / 180;
+    const up = [0, Math.sin(p), Math.cos(p)], fwd0 = [0, Math.cos(p), -Math.sin(p)], lat0 = [1, 0, 0];
+    const rot = (v, w) => v.map((_, i) => v[i] * Math.cos(y) + w[i] * Math.sin(y));
+    return { up, fwd: rot(fwd0, lat0), lat: rot(lat0, fwd0.map(v => -v)) };
+  })();
   const err = []; let nulls = 0, frames = 0;
   const events = [];
   const allEvents = [];
@@ -24,7 +32,17 @@ function run({ noise = 1, mode = 'eco', seconds = 130, useGps = true, useMotion 
       synth.render(block, sim.rpm, sim.load, sim.kmh);
       buf.copyWithin(0, sub); buf.set(block, n - sub);
       if (useMotion) while (nextMot <= t) {
-        coach.motion(nextMot, 0.05 * (Math.random() - 0.5), sim.longAccel() + 0.1 * (Math.random() - 0.5), 0.05 * (Math.random() - 0.5));
+        if (!phone) coach.motion(nextMot, 0.05 * (Math.random() - 0.5), sim.longAccel() + 0.1 * (Math.random() - 0.5), 0.05 * (Math.random() - 0.5));
+        else {
+          const tm = nextMot;
+          // פנייה חדה כל 9 שניות: תאוצה צידית של 3 m/s² שנבנית תוך 0.4 שנ' (jerk של בערך 12)
+          let lat = 0;
+          if (turns) { const ph = (tm + 3) % 9; if (ph < 2.4) lat = 3 * Math.sin(Math.PI * Math.min(1, ph / 0.8, (2.4 - ph) / 0.8) / 2) ** 2; }
+          roadN = roadN.map(v => v * 0.9 + (Math.random() - 0.5) * road * 0.9);
+          const lon = sim.longAccel() + roadN[0], la = lat + roadN[1], up = roadN[2] * 3;
+          const a = [0, 1, 2].map(i => PH.fwd[i] * lon + PH.lat[i] * la + PH.up[i] * up + 0.03 * (Math.random() - 0.5));
+          if (passG) coach.motion(tm, a[0], a[1], a[2], PH.up[0] * 9.81, PH.up[1] * 9.81, PH.up[2] * 9.81); else coach.motion(tm, a[0], a[1], a[2]);
+        }
         nextMot += 1 / 60;
       }
       if (useGps && t >= nextGps) {
@@ -73,6 +91,7 @@ function run({ noise = 1, mode = 'eco', seconds = 130, useGps = true, useMotion 
   }
   if (verbose) truthGrades.forEach((s, i) => { if (!used.has(i)) console.log(`  MISSED ${s.from}->${s.to} ${Math.round(s.before)}/${Math.round(s.after)} at ${s.t.toFixed(1)}`); });
   Object.assign(res, { matched, gradeOk, smoothOk, falsePos: fp });
+  if (phone) { const f = coach.forwardAxis(); res.axisErr = f ? Math.round(Math.acos(Math.min(1, Math.abs(f[0] * PH.fwd[0] + f[1] * PH.fwd[1] + f[2] * PH.fwd[2]))) * 180 / Math.PI) + '°' : 'none'; }
   // הורדות הילוך וזינוקים: התאמה לפי זמן, ובדיקת ציון החלקות
   const other = (kind, truthList, tol) => {
     const evs = allEvents.filter(e => e.kind === kind), used = new Set(); let m = 0, ok = 0, fpo = 0;
@@ -110,6 +129,26 @@ if (args[0] === 'v') {
   const r = { bumpNoG: peak('bump', false), bumpG: peak('bump', true), kickG: peak('kick', true) };
   for (const k in r) r[k] = Math.round(r[k] * 100) / 100;
   console.log(r, r.bumpG < 0.1 && r.kickG > 5 ? 'PASS' : 'FAIL');
+} else if (args[0] === 'phone') {
+  // טלפון מוטה ומסובב, פניות חדות ורעש כביש: ציר נסיעה + סף יחסי מול jerk בכל הכיוונים
+  // החלקות נבדקת על כל האירועים יחד (העברה למעלה, הורדה, זינוק); כל שורה = ממוצע של 3 הרצות
+  const score = (o) => {
+    let ok = 0, tot = 0, ax = [];
+    for (let k = 0; k < 3; k++) {
+      const r = run(o), d = r.down.match(/(\d+)\/\d+ ok(\d+)/), l = r.launch.match(/(\d+)\/\d+ ok(\d+)/);
+      ok += r.smoothOk + +d[2] + +l[2]; tot += r.matched + +d[1] + +l[1]; if (r.axisErr) ax.push(r.axisErr);
+    }
+    return `smooth correct ${ok}/${tot} (${Math.round(100 * ok / tot)}%)` + (ax.length ? `  axis error ${ax.join(' ')}` : '');
+  };
+  const P = { phone: true, turns: true, road: 0.3 };
+  for (const mode of ['eco', 'sport']) {
+    console.log(mode, 'flat phone, no turns           ', score({ mode }));
+    console.log(mode, 'tilted + turns + road: new     ', score({ mode, ...P }));
+    console.log(mode, '  without travel axis          ', score({ mode, ...P, cs: { jerkAxis: false } }));
+    console.log(mode, '  without road baseline        ', score({ mode, ...P, cs: { jerkBaseline: false } }));
+    console.log(mode, '  old (neither)                ', score({ mode, ...P, cs: { jerkAxis: false, jerkBaseline: false } }));
+    console.log(mode, '  no GPS (PCA axis, up only)   ', score({ mode, ...P, useGps: false }));
+  }
 } else if (args[0] === 'grid3') {
   for (const to of [{}, {contFloor:0.15}, {contFloor:0.08}]) for (const mode of ['eco','sport']) for (const noise of [1,2]) {
     const r = run({ noise, mode, to });
