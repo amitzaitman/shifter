@@ -83,16 +83,23 @@ label.btn { position: relative; }
 
 /* ---------- start screen ---------- */
 .hero { display: grid; grid-template-columns: auto 1fr; gap: 18px; align-items: center; }
-.hero-tile {
-  width: 112px; aspect-ratio: 1; max-width: 100%; border-radius: 22px;
-  border: 14px solid var(--good); background: color-mix(in oklab, var(--slight) 72%, var(--bg));
-  animation: tile 7s infinite steps(1);
+/* mini stage: the bar fills, then the screen flashes green */
+.hero-tile { width: 112px; aspect-ratio: 1; max-width: 100%; border-radius: 22px; background: var(--surface); animation: tileFlash 4s infinite; }
+.hero-tile svg { display: block; width: 100%; height: 100%; }
+.hero-tile .t { fill: none; stroke: var(--line); stroke-width: 10; }
+.hero-tile .f { fill: none; stroke-width: 10; stroke-dasharray: 100 100; animation: tileFill 4s infinite; }
+@keyframes tileFill {
+  0% { stroke-dashoffset: 100; stroke: var(--good); }
+  40% { stroke: var(--slight); }
+  55% { stroke-dashoffset: 12; stroke: var(--accent); opacity: 1; }
+  58% { opacity: .3; } 61% { opacity: 1; } 64% { opacity: .3; }
+  66% { stroke-dashoffset: 12; opacity: 1; stroke: var(--accent); }
+  72%, 100% { stroke-dashoffset: 70; stroke: var(--good); }
 }
-@keyframes tile {
-  0% { border-color: var(--good); background: color-mix(in oklab, var(--good) 72%, var(--bg)); }
-  25% { border-color: var(--late); background: color-mix(in oklab, var(--slight) 72%, var(--bg)); }
-  50% { border-color: var(--good); background: color-mix(in oklab, var(--late) 72%, var(--bg)); }
-  75% { border-color: var(--early); background: color-mix(in oklab, var(--good) 72%, var(--bg)); }
+@keyframes tileFlash {
+  0%, 66% { background: var(--surface); }
+  70% { background: color-mix(in oklab, var(--good) 60%, var(--bg)); }
+  100% { background: var(--surface); }
 }
 .hero p { color: var(--muted); max-width: 46ch; }
 
@@ -122,31 +129,22 @@ label.btn { position: relative; }
   padding-left: env(safe-area-inset-left, 0px);
   padding-right: env(safe-area-inset-right, 0px);
 }
-#stage::after {
-  content: ""; position: absolute; pointer-events: none;
-  inset: calc(env(safe-area-inset-top, 0px) + 6px) calc(env(safe-area-inset-right, 0px) + 6px) calc(env(safe-area-inset-bottom, 0px) + 6px) calc(env(safe-area-inset-left, 0px) + 6px);
-  border: var(--frame-w) solid var(--frame); border-radius: 28px;
+/* the rpm bar: fills from the bottom centre up both sides, full at the end of the target zone */
+#barbox {
+  position: absolute; pointer-events: none; direction: ltr;
+  top: calc(env(safe-area-inset-top, 0px) + 6px); right: calc(env(safe-area-inset-right, 0px) + 6px);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 6px); left: calc(env(safe-area-inset-left, 0px) + 6px);
 }
-#stage.pulse::after { animation: pulse .42s infinite alternate ease-in-out; }
-#stage.pulse { animation: pulseFill .42s infinite alternate ease-in-out; }
-@keyframes pulse { from { border-color: var(--accent); } to { border-color: color-mix(in oklab, var(--accent) 25%, var(--bg)); } }
-@keyframes pulseFill { from { background-color: color-mix(in oklab, var(--accent) 30%, var(--bg)); } to { background-color: var(--bg); } }
+#bar { display: block; width: 100%; height: 100%; overflow: visible; }
+#bar path { fill: none; stroke-width: var(--frame-w); }
+#bar .track { stroke: var(--raise); }
+#bar .zone { stroke: color-mix(in oklab, var(--fg) 30%, var(--raise)); }
+#bar .mark { stroke: var(--fg); stroke-linecap: round; stroke-width: calc(var(--frame-w) * 1.5); }
 @media (prefers-reduced-motion: reduce) {
-  #stage.pulse::after, #stage.pulse { animation: none; }
-  #stage.pulse { background-color: color-mix(in oklab, var(--accent) 22%, var(--bg)); }
-  #stage.pulse::after { border-color: var(--accent); }
-  .hero-tile { animation: none; }
+  .hero-tile, .hero-tile .f { animation: none; }
+  .hero-tile .f { stroke-dashoffset: 30; stroke: var(--good); }
 }
-.leds {
-  display: grid; grid-template-columns: repeat(12, 1fr); gap: 5px;
-  margin: calc(var(--frame-w) + 20px) calc(var(--frame-w) + 22px) 0;
-  direction: ltr;
-}
-.leds i { height: 12px; border-radius: 3px; background: var(--raise); transition: background-color .08s; }
-.leds i.on.z-ok { background: var(--good); }
-.leds i.on.z-near { background: var(--slight); }
-.leds i.on.z-shift { background: var(--accent); }
-.leds i.on.z-late { background: var(--late); }
+.dash { margin-top: calc(var(--frame-w) + 20px); }
 .dash { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 0 calc(var(--frame-w) + 20px); }
 .gear { min-height: 0.9em; font-family: var(--font-num); font-weight: 600; font-size: clamp(90px, 30vmin, 220px); line-height: 0.9; color: color-mix(in oklab, var(--fg) 40%, transparent); }
 .rpm { font-family: var(--font-num); font-size: clamp(22px, 6vmin, 40px); color: color-mix(in oklab, var(--fg) 50%, transparent); }
@@ -228,10 +226,10 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
   <main class="view" id="view-drive">
     <div class="wrap">
       <section class="hero">
-        <div class="hero-tile" aria-hidden="true"></div>
+        <div class="hero-tile" aria-hidden="true"><svg viewBox="0 0 112 112"><rect class="t" x="5" y="5" width="102" height="102" rx="17"/><path class="f" pathLength="100" d="M56 107 H90 A17 17 0 0 0 107 90 V22 A17 17 0 0 0 90 5 H56"/><path class="f" pathLength="100" d="M56 107 H22 A17 17 0 0 1 5 90 V22 A17 17 0 0 1 22 5 H56"/></svg></div>
         <div style="display:flex;flex-direction:column;gap:8px;min-width:0">
           <h2>המסך הוא הפידבק</h2>
-          <p>שים את הטלפון במעמד וסע. אחרי כל העברת הילוך המסך נצבע: המסגרת מראה אם העברת בזמן, והמילוי מראה כמה חלקה הייתה ההעברה.</p>
+          <p>שים את הטלפון במעמד וסע. הפס סביב המסך מתמלא עם הסל"ד, ומהבהב כשצריך להעביר. אחרי ההעברה המסך נדלק ירוק, צהוב או אדום, ורועד אם ההעברה קפצה.</p>
         </div>
       </section>
 
@@ -253,26 +251,17 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
 
       <section class="legend" aria-label="מקרא צבעים">
         <div class="card">
-          <h3>מסגרת: תזמון</h3>
-          <div class="key"><span class="sw frame c-good"></span>בזמן</div>
-          <div class="key"><span class="sw frame c-slight"></span>קצת מאוחר</div>
-          <div class="key"><span class="sw frame c-late"></span>מאוחר מדי</div>
-          <div class="key"><span class="sw frame c-early"></span>מוקדם מדי</div>
+          <h3>הפס: סל"ד</h3>
+          <div class="key"><span class="sw frame c-good"></span>מתמלא ככל שהמנוע מסתובב מהר יותר</div>
+          <div class="key"><span class="sw frame c-accent"></span>מהבהב: להעביר עכשיו</div>
+          <div class="key"><span class="sw frame c-late"></span>אדום: עברת את הנקודה, או מנוע חנוק</div>
         </div>
         <div class="card">
-          <h3>מילוי: חלקות</h3>
-          <div class="key"><span class="sw fill c-good"></span>חלקה, הנוסעים לא הרגישו</div>
-          <div class="key"><span class="sw fill c-slight"></span>טלטלה קלה</div>
-          <div class="key"><span class="sw fill c-late"></span>קפיצה, ראשים זזו</div>
-        </div>
-        <div class="card live-keys">
-          <h3>תוך כדי נסיעה</h3>
-          <div class="keys">
-            <div class="key"><span class="sw frame c-accent"></span>מהבהב: להעביר עכשיו</div>
-            <div class="key"><span class="sw frame c-slight"></span>מתקרב לנקודת העברה</div>
-            <div class="key"><span class="sw frame c-late"></span>עברת את הנקודה</div>
-            <div class="key"><span class="sw frame c-early"></span>מנוע חנוק: להוריד הילוך</div>
-          </div>
+          <h3>אחרי העברה</h3>
+          <div class="key"><span class="sw fill c-good"></span>ירוק: בזמן</div>
+          <div class="key"><span class="sw fill c-slight"></span>צהוב: קצת מאוחר</div>
+          <div class="key"><span class="sw fill c-late"></span>אדום: מוקדם או מאוחר מדי</div>
+          <div class="key muted">הנקודה על הפס מראה איפה העברת. המסך רועד אם ההעברה קפצה.</div>
         </div>
       </section>
     </div>
@@ -359,7 +348,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
 
 <!-- ===== STAGE (full screen while driving) ===== -->
 <div id="stage" hidden dir="rtl">
-  <div class="leds" id="leds" aria-hidden="true"></div>
+  <div id="barbox" aria-hidden="true"><svg id="bar"></svg></div>
   <div class="demo-tag" id="demo-tag" hidden>הדגמה</div>
   <div class="dash" id="dash">
     <div class="gear" id="d-gear"></div>
@@ -425,17 +414,43 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
 
   function notice(text) { $('notice').hidden = !text; $('notice-text').textContent = text || ''; }
 
-  // ---------- LEDs ----------
-  const LEDN = 12;
-  for (let i = 0; i < LEDN; i++) $('leds').appendChild(document.createElement('i'));
-  function zoneOf(v, th) { return v > th.goodHi ? 'late' : v >= th.prompt ? 'shift' : v >= th.near ? 'near' : 'ok'; }
-  function drawLeds(rpm, th) {
-    const leds = $('leds').children;
-    for (let i = 0; i < LEDN; i++) {
-      const v = th.ledLo + (i + 1) / LEDN * (th.ledHi - th.ledLo);
-      leds[i].className = (rpm != null && rpm >= v ? 'on ' : '') + 'z-' + zoneOf(v, th);
+  // ---------- rpm bar (two halves of a rounded rect, bottom centre → top centre) ----------
+  const SVGNS = 'http://www.w3.org/2000/svg';
+  const bar = { w: 0, h: 0, len: 0, layers: {} };
+  function layoutBar() {
+    const svg = $('bar'), r = svg.getBoundingClientRect();
+    if (!r.width || (r.width === bar.w && r.height === bar.h)) return;
+    bar.w = r.width; bar.h = r.height;
+    svg.setAttribute('viewBox', `0 0 ${r.width} ${r.height}`);
+    const sw = parseFloat(getComputedStyle(svg.querySelector('path') || svg).strokeWidth) || parseFloat(getComputedStyle($('stage')).getPropertyValue('--frame-w')) || 20;
+    const i = sw / 2, w = r.width, h = r.height, c = w / 2, rr = Math.max(6, 28 - i);
+    const half = {
+      r: `M${c} ${h - i} H${w - i - rr} A${rr} ${rr} 0 0 0 ${w - i} ${h - i - rr} V${i + rr} A${rr} ${rr} 0 0 0 ${w - i - rr} ${i} H${c}`,
+      l: `M${c} ${h - i} H${i + rr} A${rr} ${rr} 0 0 1 ${i} ${h - i - rr} V${i + rr} A${rr} ${rr} 0 0 1 ${i + rr} ${i} H${c}`
+    };
+    svg.textContent = '';
+    for (const name of ['track', 'zone', 'fill', 'mark']) {
+      bar.layers[name] = ['r', 'l'].map(side => {
+        const pth = document.createElementNS(SVGNS, 'path');
+        pth.setAttribute('d', half[side]); pth.setAttribute('class', name);
+        svg.appendChild(pth); return pth;
+      });
+    }
+    bar.len = bar.layers.track[0].getTotalLength();
+  }
+  window.addEventListener('resize', () => { bar.w = 0; });
+  // draw the segment [a, b] (fractions of a half) on a layer
+  function seg(name, a, b, color, opacity) {
+    const L = bar.len, A = Math.max(0, Math.min(1, a)) * L, B = Math.max(0, Math.min(1, b)) * L;
+    for (const p of bar.layers[name]) {
+      const on = B - A > 0.01;  // hide empty segments: a round cap on a zero-length dash still draws a dot
+      p.style.visibility = on ? '' : 'hidden';
+      if (on) { p.style.strokeDasharray = `${B - A} ${L * 2}`; p.style.strokeDashoffset = -A; }
+      if (color) p.style.stroke = color;
+      p.style.opacity = opacity == null ? '' : opacity;
     }
   }
+  const barFrac = (rpm, th) => (rpm - th.ledLo) / (th.goodHi - th.ledLo);
 
   // ---------- beeps (above the analysed band, so they don't fool the mic) ----------
   let beepCtx = null;
@@ -458,7 +473,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
   // ---------- one driving run (live, demo) ----------
   function makeCoach(gm) {
     const c = new E.Coach(settings, gm);
-    c.onEvent = (ev) => { feedback = { ev, until: run.clock() + 3 }; };
+    c.onEvent = (ev) => { feedback = { ev, t0: run.clock(), until: run.clock() + 3 }; };
     c.onEventUpdate = (ev) => { if (feedback && feedback.ev === ev) feedback.until = Math.max(feedback.until, run.clock() + 2.2); };
     return c;
   }
@@ -477,8 +492,9 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
   }
 
   // ---------- continuous colour ----------
-  // Frame follows a smoothed rpm along a gradient (dim green → yellow → blue → red).
-  // A grade snaps in (~0.1 s) and fades back out slowly; the shift pulse has hysteresis so noisy rpm doesn't flicker it.
+  // The bar's length and colour follow a smoothed rpm (green → yellow → blue → red); it flashes at the shift point,
+  // with hysteresis so noisy rpm doesn't flicker it. After a shift the whole screen lights up like a traffic light
+  // (snaps in, fades out), a dot stays on the bar where you shifted, and the screen shakes if the shift was harsh.
   const cssv = getComputedStyle(document.documentElement);
   const C = {};
   for (const n of ['bg', 'surface', 'line', 'good', 'slight', 'accent', 'late', 'early']) {
@@ -488,9 +504,9 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
   const mixc = (a, b, k) => a.map((v, i) => v + (b[i] - v) * k);
   const dim = (c, k) => mixc(C.bg, c, k);
   const rgb = (c) => `rgb(${c.map(Math.round).join(',')})`;
-  const RPM_TAU = 0.3, LIVE_TAU = 0.08, SNAP_TAU = 0.04, FADE_TAU = 0.45, FADE_FOR = 0.9, PULSE_HYST = 120;
+  const RPM_TAU = 0.3, LIVE_TAU = 0.15, SNAP_TAU = 0.04, FADE_TAU = 0.45, PULSE_HYST = 120;
   function liveColor(rpm, th) {
-    const stops = [[th.ledLo, dim(C.good, 0.2)], [th.near, dim(C.good, 0.6)], [(th.near + th.prompt) / 2, C.slight],
+    const stops = [[th.ledLo, dim(C.good, 0.5)], [th.near, C.good], [(th.near + th.prompt) / 2, C.slight],
                    [th.prompt, C.accent], [th.goodHi, C.accent], [th.goodHi + 250, C.late]];
     if (rpm <= stops[0][0]) return stops[0][1];
     for (let i = 1; i < stops.length; i++) {
@@ -500,7 +516,14 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     return C.late;
   }
   let col = null;
-  function resetColour() { col = { fr: null, fi: null, rpm: null, t: null, pulse: false, fbEnd: -1e9 }; }
+  function resetColour() { col = { fi: null, rpm: null, t: null, pulse: false, shake: null, shakeEv: null }; }
+  const LIGHT = { good: 'good', slight: 'slight', late: 'late', early: 'late' };
+  const reduceMotion = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // shake amplitude in px from the jerk (m/s³) when we have it, else from the smoothness class
+  function shakeAmp(ev) {
+    if (ev.jerk != null) return Math.max(0, Math.min(16, (ev.jerk - 4) * 1.6));
+    return { smooth: 0, ok: 4, harsh: 11 }[ev.smooth] || 0;
+  }
   resetColour();
 
   function frame() {
@@ -511,30 +534,45 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     const dt = col.t == null ? 0 : Math.min(0.25, Math.max(0, t - col.t)); col.t = t;
     col.rpm = L.rpm == null ? null : col.rpm == null ? L.rpm : col.rpm + (L.rpm - col.rpm) * (1 - Math.exp(-dt / RPM_TAU));
     const r = col.rpm, th = L.th;
-    let fr, fi, tau;
+    layoutBar();
+
+    // live bar
+    let barCol, flash = 1;
+    if (L.state === 'nosignal' || r == null) barCol = null;
+    else if (L.state === 'low') barCol = C.late;
+    else if (L.top) barCol = C.good;
+    else barCol = liveColor(r, th);
+    if (r == null || L.top || L.state === 'low') col.pulse = false;
+    else if (!col.pulse && r >= th.prompt && r <= th.goodHi) { col.pulse = true; if (!feedback) beep('shift'); }
+    else if (col.pulse && (r < th.prompt - PULSE_HYST || r > th.goodHi + PULSE_HYST)) col.pulse = false;
+    if (col.pulse && !reduceMotion) flash = 0.35 + 0.65 * (0.5 + 0.5 * Math.cos(t * 2 * Math.PI * 2.4));
+    seg('track', 0, 1);
+    if (L.top) seg('zone', 0, 0); else seg('zone', barFrac(th.goodLo, th), 1);
+    seg('fill', 0, barCol ? Math.max(0.02, barFrac(r, th)) : 0, barCol ? rgb(barCol) : null, flash);
+
+    // after a shift: traffic-light screen, a dot where you shifted, a shake if it was harsh
+    let fi, tau;
     if (feedback && t < feedback.until) {
-      fr = C[feedback.ev.grade];
-      fi = feedback.ev.smooth ? dim(C[SMOOTH_KEY[feedback.ev.smooth]], 0.72) : C.surface;
-      tau = SNAP_TAU; col.pulse = false; col.fbEnd = t;
+      const ev = feedback.ev, age = t - feedback.t0;
+      fi = dim(C[LIGHT[ev.grade]], 0.62 * Math.max(0.35, 1 - Math.max(0, age - 0.6) / 2.4));
+      tau = age < 0.5 ? SNAP_TAU : LIVE_TAU;
+      const f = barFrac(ev.before, th);
+      seg('mark', f - 0.004, f + 0.004, rgb(mixc(C[LIGHT[ev.grade]], [255, 255, 255], 0.35)), 1);
+      if (ev.smooth && col.shakeEv !== ev) { col.shakeEv = ev; col.shake = { t0: t, amp: reduceMotion ? 0 : shakeAmp(ev) }; }
     } else {
-      feedback = null;
-      fi = C.bg;
-      tau = t - col.fbEnd < FADE_FOR ? FADE_TAU : LIVE_TAU;
-      if (L.state === 'nosignal' || r == null) fr = C.line;
-      else if (L.state === 'low') fr = C.early;
-      else if (L.top) fr = dim(C.good, 0.45);
-      else fr = liveColor(r, th);
-      if (r == null || L.top || L.state === 'low') col.pulse = false;
-      else if (!col.pulse && r >= th.prompt && r <= th.goodHi) { col.pulse = true; beep('shift'); }
-      else if (col.pulse && (r < th.prompt - PULSE_HYST || r > th.goodHi + PULSE_HYST)) col.pulse = false;
+      feedback = null; fi = C.bg; tau = FADE_TAU;
+      seg('mark', 0, 0);
     }
-    const k = col.fr == null ? 1 : 1 - Math.exp(-dt / tau);
-    col.fr = col.fr == null ? fr : mixc(col.fr, fr, k);
+    const k = col.fi == null ? 1 : 1 - Math.exp(-dt / tau);
     col.fi = col.fi == null ? fi : mixc(col.fi, fi, k);
-    st.style.setProperty('--frame', rgb(col.fr));
     st.style.setProperty('--fill', rgb(col.fi));
-    st.classList.toggle('pulse', col.pulse);
-    drawLeds(L.rpm, L.th);
+    let tx = '';
+    if (col.shake && col.shake.amp > 0) {
+      const a = t - col.shake.t0, A = col.shake.amp * Math.exp(-a / 0.2);
+      if (a < 0.8 && A > 0.3) tx = `translate(${(A * Math.sin(a * 2 * Math.PI * 13)).toFixed(1)}px, ${(A * 0.6 * Math.sin(a * 2 * Math.PI * 17 + 1)).toFixed(1)}px)`;
+      else col.shake = null;
+    }
+    st.style.transform = tx;
     $('d-gear').textContent = L.gear != null ? L.gear : '';
     $('d-rpm').textContent = L.rpm != null ? fmt(Math.round(L.rpm / 10) * 10) : '----';
     $('d-kmh').textContent = L.kmh != null ? Math.round(L.kmh) : '--';
