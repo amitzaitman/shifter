@@ -1,6 +1,6 @@
 """Transcribe the driver's narration in a recording (Hebrew) with Whisper, on the recording clock.
 
-    python3 tests/transcribe.py data/drive-20261105-0815.json [--model large-v3] [--lang he]
+    python3 tests/transcribe.py data/drive-20261105-0815.json [--model large-v3] [--lang he] [--from S --to S]
 
 Writes data/drive-…narration.json next to the recording:
     {"model": …, "segments": [{"t0": s, "t1": s, "text": "…", "words": [[t, "word"], …]}, …]}
@@ -35,18 +35,27 @@ def main():
                 # decode with ffmpeg ourselves (faster-whisper's own decoder breaks with some PyAV versions)
                 raw = subprocess.run(['ffmpeg', '-v', 'error', '-i', src, '-ac', '1', '-ar', '16000', '-f', 'f32le', 'pipe:1'], check=True, capture_output=True).stdout
                 audio = np.frombuffer(raw, dtype=np.float32)
+                # optional slice (seconds on the recording clock), for quick tests
+                t0s = sg.get('t0') or 0
+                a0 = max(0.0, float(arg('--from', 0)) - t0s); a1 = float(arg('--to', 1e9)) - t0s
+                if a1 <= 0 or a0 * 16000 >= len(audio): continue
+                audio = audio[int(a0 * 16000):int(min(a1 * 16000, len(audio)))]
                 # voice activity filter on: long stretches of engine noise produce no text
                 pieces, _ = model.transcribe(audio, language=lang, vad_filter=True, word_timestamps=True,
                                              initial_prompt='העברתי הילוך. הורדתי לשני. היה חלק. קפץ. טלטלה. יוצא מהרמזור.')
                 for p in pieces:
-                    t0 = (sg.get('t0') or 0)
-                    out.append({'t0': round(t0 + p.start, 2), 't1': round(t0 + p.end, 2), 'text': p.text.strip(),
+                    t0 = t0s + a0
+                    # Whisper's own confidence; used to drop hallucinations (repeated lines, 'speech' over engine noise)
+                    ok = p.no_speech_prob < 0.6 and p.avg_logprob > -1.0 and p.compression_ratio < 2.4 and (p.end - p.start) < 15
+                    out.append({'t0': round(t0 + p.start, 2), 't1': round(t0 + p.end, 2), 'text': p.text.strip(), 'ok': bool(ok),
+                                'logprob': round(p.avg_logprob, 2), 'noSpeech': round(p.no_speech_prob, 2),
                                 'words': [[round(t0 + w.start, 2), w.word.strip()] for w in (p.words or [])]})
-        dst = path[:-5] + '.narration.json'
+        dst = path[:-5] + ('.narration.json' if not arg('--from') and not arg('--to') else f'.narration-{arg("--from", 0)}-{arg("--to", "end")}.json')
         json.dump({'model': model_name, 'lang': lang, 'segments': out}, open(dst, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
         print(f'\n{os.path.basename(path)}  ({rec.get("mode", "drive")}, {len(out)} segments) → {os.path.basename(dst)}')
         for s in out:
-            print(f'  {int(s["t0"] // 60)}:{int(s["t0"] % 60):02d}  {s["text"]}')
+            print(f'  {int(s["t0"] // 60)}:{int(s["t0"] % 60):02d}  {"  " if s["ok"] else "? "}{s["text"]}')
+        print(f'  ({sum(1 for s in out if s["ok"])} of {len(out)} segments look like real speech; "?" = dropped as a likely hallucination)')
 
 if __name__ == '__main__':
     main()

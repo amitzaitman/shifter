@@ -19,7 +19,7 @@ for (const f of files) {
   const rec = JSON.parse(fs.readFileSync(f, 'utf8'));
   if (rec.format !== 'shift-coach-recording') { console.log(`skip ${f}: not a recording`); continue; }
   // narrated drives: ignore rpm while the driver talks, and use the labels written from the transcript
-  const nar = L.narrationOf(f), mask = nar ? nar.segments.map(s => [s.t0, s.t1]) : null;
+  const nar = L.narrationOf(f), mask = nar ? nar.segments.filter(s => s.ok !== false).map(s => [s.t0, s.t1]) : null;
   const { coach, offset, align, seconds, rp } = L.replay(rec, { until, settings, mask });
   const truth = L.truthOf(rec, offset, until ? until : null, L.labelsOf(f));
   const kinds = coach.events.reduce((a, e) => (a[e.kind || 'up'] = (a[e.kind || 'up'] || 0) + 1, a), {});
