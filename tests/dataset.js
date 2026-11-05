@@ -4,15 +4,16 @@
 const fs = require('fs'), path = require('path');
 const L = require('./lib.js');
 let files = process.argv.slice(2);
-files = files.flatMap(f => fs.statSync(f).isDirectory() ? fs.readdirSync(f).filter(x => x.endsWith('.json')).map(x => path.join(f, x)) : [f]);
+files = files.flatMap(f => fs.statSync(f).isDirectory() ? fs.readdirSync(f).filter(x => x.endsWith('.json') && !/\.(narration|labels)\.json$/.test(x)).map(x => path.join(f, x)) : [f]);
 if (!files.length) { console.error('usage: node tests/dataset.js <folder|files…> > out.csv'); process.exit(1); }
 const cols = ['file', 't', 'why', 'q', 'rB', 'rA', 'pre', 'dip', 'rec', 'jx', 'conf', 'kmh', 'axis', 'event_kind', 'event_smooth', 'event_jerk_excess', 'event_vdv', 'label', 'label_src', 'mount_shake'];
 console.log(cols.join(','));
 for (const f of files) {
   const rec = JSON.parse(fs.readFileSync(f, 'utf8'));
   if (rec.format !== 'shift-coach-recording') continue;
-  const { coach, offset } = L.replay(rec, {});
-  const truth = L.truthOf(rec, offset, null), cands = L.labelCandidates(truth, coach.candidates, coach.startT);
+  const nar = L.narrationOf(f);
+  const { coach, offset } = L.replay(rec, { mask: nar ? nar.segments.map(x => [x.t0, x.t1]) : null });
+  const truth = L.truthOf(rec, offset, null, L.labelsOf(f)), cands = L.labelCandidates(truth, coach.candidates, coach.startT);
   const shake = coach.mountShake();
   for (const c of cands) {
     const ev = coach.events.find(e => Math.abs(e.t - c.t) < 1.5);

@@ -1112,6 +1112,8 @@
       this.gi = 0; this.mi = 0; this.f = 0;
       this.frames = Math.max(0, Math.floor((pcm.length - this.n) / this.hop));
       this.rpm = [];  // [tc, rpm] לכל פריים
+      // קטעים (בשעון הקול) שבהם הנהג דיבר: שם הסל"ד לא נמדד, כי הקול באותם תדרים כמו המנוע
+      this.mask = (o.mask || []).map(([a, b]) => [a - 0.3, b + 0.3]);
     }
     step(count) {
       const end = Math.min(this.frames, this.f + (count || this.frames));
@@ -1121,7 +1123,8 @@
         while (this.mi < this.mot.length && this.mot[this.mi][0] + off <= tEnd) { const m = this.mot[this.mi++]; c.motion(m[0] + off, m[1], m[2], m[3], m[4], m[5], m[6]); }
         while (this.gi < this.gps.length && this.gps[this.gi][0] + off <= tEnd) { const g = this.gps[this.gi++]; c.gpsFix(g[0] + off, g[1]); }
         const priors = c.gears.complete ? c.gears.predict(c.speedAt(tc)) : null;
-        const r = this.tracker.update(this.spec.compute(this.pcm, start), tc, priors);
+        const masked = this.mask.length && this.mask.some(([a, b]) => tc + this.n / 2 / sr > a && tc - this.n / 2 / sr < b);
+        const r = masked ? { rpm: null, conf: 0, masked: true } : this.tracker.update(this.spec.compute(this.pcm, start), tc, priors);
         this.rpm.push([tc, r.rpm]);
         c.audio(tc, r);
       }

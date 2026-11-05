@@ -184,6 +184,15 @@ label.btn { position: relative; }
 .cupbox .drop { fill: var(--coffee); }
 .cupbox.idle { opacity: .35; }
 .no-cup .cupbox { display: none; }
+/* narrated recording: a quiet screen, no feedback */
+.narr { display: none; flex: 1; flex-direction: column; align-items: center; justify-content: center; gap: 14px; text-align: center; padding: 0 28px; color: color-mix(in oklab, var(--fg) 78%, transparent); }
+.narr p { margin: 0; max-width: 34ch; } .narr .small { color: var(--muted); }
+.narr-dot { width: 26px; height: 26px; border-radius: 50%; background: var(--late); box-shadow: 0 0 22px color-mix(in oklab, var(--late) 60%, transparent); animation: narrDot 1.6s ease-in-out infinite; }
+@keyframes narrDot { 50% { opacity: .45; } }
+.narr-time { font-family: var(--font-num); font-size: 44px; font-weight: 600; }
+.narrate .narr { display: flex; }
+.narrate .dash, .narrate #barbox, .narrate .calib, .narrate .calib-count, .narrate #s-gears, .narrate #d-mode { display: none !important; }
+@media (prefers-reduced-motion: reduce) { .narr-dot { animation: none; } }
 /* calibration drive: a passenger taps one button right after each gear change, rating how it felt */
 .calib { display: none; gap: 8px; margin: 0 calc(var(--bar-w) + 14px) 10px; }
 .calib-on .calib { display: grid; grid-template-columns: repeat(3, 1fr); }
@@ -328,6 +337,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
       </div>
       <div class="row">
         <button class="btn" id="btn-mount">בדיקת מיקום לטלפון</button>
+        <button class="btn" id="btn-narrate">נסיעה עם קריינות</button>
       </div>
       <div class="row">
         <button class="btn" id="btn-demo">הדגמה</button>
@@ -446,7 +456,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
         <div id="learn-body" class="small"></div>
         <div class="row"><button class="btn" id="learn-reset">אפס למידה</button></div>
       </div>
-      <p class="small muted" style="text-align:center">גרסה <span class="num">04.11.2026 21:09</span></p>
+      <p class="small muted" style="text-align:center">גרסה <span class="num">05.11.2026 08:46</span></p>
     </div>
   </main>
 </div>
@@ -508,6 +518,12 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
         <path class="rim" d="M110 32 q24 4 20 27 q-3 17 -24 17"/>
       </svg>
     </div>
+  </div>
+  <div class="narr" id="narr" aria-live="polite">
+    <div class="narr-dot" aria-hidden="true"></div>
+    <div class="narr-time num" id="narr-time">0:00</div>
+    <p>מקליט. דבר חופשי: מה עשית ואיך זה הרגיש. למשל "מעביר לשלישי… היה חלק", "מוריד לשני, קפץ", "יוצא מהרמזור".</p>
+    <p class="small">עדיף לדבר מיד אחרי ההעברה, לא תוך כדי: הקול שלך באותם תדרים כמו המנוע. המסך לא מראה ציונים בנסיעה הזו.</p>
   </div>
   <div class="calib" id="calib" role="group" aria-label="סימון העברה לכיול">
     <button class="c-s" data-k="smooth">חלקה</button>
@@ -1638,6 +1654,8 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
       this.gi = 0; this.mi = 0; this.f = 0;
       this.frames = Math.max(0, Math.floor((pcm.length - this.n) / this.hop));
       this.rpm = [];  // [tc, rpm] לכל פריים
+      // קטעים (בשעון הקול) שבהם הנהג דיבר: שם הסל"ד לא נמדד, כי הקול באותם תדרים כמו המנוע
+      this.mask = (o.mask || []).map(([a, b]) => [a - 0.3, b + 0.3]);
     }
     step(count) {
       const end = Math.min(this.frames, this.f + (count || this.frames));
@@ -1647,7 +1665,8 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
         while (this.mi < this.mot.length && this.mot[this.mi][0] + off <= tEnd) { const m = this.mot[this.mi++]; c.motion(m[0] + off, m[1], m[2], m[3], m[4], m[5], m[6]); }
         while (this.gi < this.gps.length && this.gps[this.gi][0] + off <= tEnd) { const g = this.gps[this.gi++]; c.gpsFix(g[0] + off, g[1]); }
         const priors = c.gears.complete ? c.gears.predict(c.speedAt(tc)) : null;
-        const r = this.tracker.update(this.spec.compute(this.pcm, start), tc, priors);
+        const masked = this.mask.length && this.mask.some(([a, b]) => tc + this.n / 2 / sr > a && tc - this.n / 2 / sr < b);
+        const r = masked ? { rpm: null, conf: 0, masked: true } : this.tracker.update(this.spec.compute(this.pcm, start), tc, priors);
         this.rpm.push([tc, r.rpm]);
         c.audio(tc, r);
       }
@@ -1778,7 +1797,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
   // ---------- beeps (above the analysed band, so they don't fool the mic) ----------
   let beepCtx = null;
   function beep(kind) {
-    if (!settings.sound) return;
+    if (!settings.sound || (run && run.narrate)) return;
     try {
       const ctx = (run && run.ctx) || beepCtx || (beepCtx = new (window.AudioContext || window.webkitAudioContext)());
       const tones = kind === 'shift' ? [[2400, 0], [2400, 0.13]] : [[2100, 0]];
@@ -1825,7 +1844,8 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     $('stage').classList.toggle('hide-num', !settings.numbers);
     $('stage').classList.toggle('no-cup', settings.cup === false);
     $('d-rpmcal').hidden = !settings.showRpm;
-    $('stage').classList.toggle('calib-on', !!settings.calib && kind === 'live');
+    $('stage').classList.toggle('calib-on', !!settings.calib && kind === 'live' && !(run && run.narrate));
+    $('stage').classList.toggle('narrate', !!(run && run.narrate));
     calibN = 0; $('calib-count').textContent = 'לנוסע: לחיצה אחת מיד אחרי כל העברה, הורדה או זינוק';
     resetCup();
     pillsKey = ''; ['s-mic', 's-gps', 's-mot'].forEach(id => { $(id).dataset.st = ''; });
@@ -1939,6 +1959,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
 
   function frame() {
     if (!run) return;
+    if (run.narrate) { narrFrame(); requestAnimationFrame(frame); return; }
     const t = run.clock();
     const L = run.coach.live(t);
     const st = $('stage');
@@ -2009,6 +2030,18 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     requestAnimationFrame(frame);
   }
 
+  // the quiet screen: elapsed time and the sensor chips; the coach keeps running underneath for the recording
+  function narrFrame() {
+    const st = $('stage'); st.style.setProperty('--fill', 'var(--bg)'); st.style.transform = '';
+    if (run.t0 == null) run.t0 = run.clock();
+    const el = Math.max(0, run.clock() - run.t0);
+    $('narr-time').textContent = `${Math.floor(el / 60)}:${String(Math.floor(el % 60)).padStart(2, '0')}`;
+    const sens = run.sensors();
+    for (const [id, k] of [['s-mic', 'mic'], ['s-gps', 'gps'], ['s-mot', 'mot']]) { const e = $(id), v = sens[k] || 'wait'; if (e.dataset.st !== v) { e.dataset.st = v; e.className = 'sens ' + v; } }
+    const lvl = sens.mic === 'ok' && sens.level != null ? Math.max(0.06, Math.min(1, sens.level)) : 0;
+    $('s-mic').querySelector('.lvl circle').style.strokeDasharray = `${(lvl * 100).toFixed(1)} 200`;
+  }
+
   function stopRun() {
     if (!run) return;
     const r = run; run = null;
@@ -2053,7 +2086,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     };
   }
 
-  const BUILD = '04.11.2026 21:09';
+  const BUILD = '05.11.2026 08:46';
   // ---------- DRIVE RECORDING (for calibration): compressed audio + sensor log in one JSON file ----------
   // Times in the file are seconds since the recorder started. The audio may start a little off that clock;
   // tests/replay.js finds the exact offset by matching the rpm logged live against the rpm from the audio.
@@ -2070,7 +2103,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
   // delivering audio after 7:12 while the mic kept working; a watchdog restarts the recorder if no data arrives for 4 s,
   // and each segment keeps its own start time so replay can place it on the sensor clock.
   const SEG_LEN = +(window.__segLen || 180), SEG_STALL = 4;  // __segLen: test hook only
-  function startRecording(stream, sampleRate) {
+  function startRecording(stream, sampleRate, mode) {
     if (!window.MediaRecorder) { notice('הדפדפן הזה לא יודע להקליט, אז הנסיעה תעבוד בלי הקלטה.'); return null; }
     const mime = pickMime();
     const make = () => {
@@ -2123,7 +2156,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
           return Promise.all(parts.map(sg => { const blob = new Blob(sg.chunks, { type: sg.mime }); return b64of(blob).then(b64 => ({ t0: r3(sg.t0), bytes: blob.size, base64: b64 })); }))
             .then(segments => {
               const rec = {
-                format: 'shift-coach-recording', v: 2, startedAt, userAgent: navigator.userAgent,
+                format: 'shift-coach-recording', v: 2, mode: mode || 'drive', startedAt, userAgent: navigator.userAgent,
                 settings: settingsAtStart, sampleRate, fftN: 8192, motionSrc: motSrc, gearsAtStart,
                 gps: gpsLog, motion: motLog, rot: rotLog, live, labels, events: sess ? sess.events : [],
                 // what the engine considered (for learning a detector) and the state it learned, for exact re-runs
@@ -2261,7 +2294,9 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
   })();
 
   // ---------- LIVE: microphone + GPS + motion ----------
-  $('btn-live').addEventListener('click', () => {
+  // narrate = a quiet recording drive: no feedback on screen, the driver talks about what happens, and the recording
+  // (voice + sensors) is transcribed and lined up offline (tests/transcribe.py) to become labels.
+  function startLive(narrate) {
     notice('');
     const AC = window.AudioContext || window.webkitAudioContext;
     // iOS: every permission request must start inside this tap
@@ -2313,7 +2348,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
       const buf = new Float32Array(8192);
       const spec = new E.Spectrum(8192), tracker = makeTracker(ctx.sampleRate);
       const coach = makeCoach(gearModel);
-      const recorder = settings.record || settings.calib ? startRecording(stream, ctx.sampleRate) : null;
+      const recorder = settings.record || settings.calib || narrate ? startRecording(stream, ctx.sampleRate, narrate ? 'narrated' : 'drive') : null;
       let lastAudio = 0, motLast = 0, hp = null, micLevel = 0;
       // a: acceleration without gravity; gv: gravity vector (or null), used by the coach to drop the vertical part
       const feedMotion = (now, a, gv, src) => {
@@ -2371,9 +2406,12 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
           if (wake) wake.release().catch(() => {});
         }
       };
+      run.narrate = !!narrate;
       enterStage('live');
     });
-  });
+  }
+  $('btn-live').addEventListener('click', () => startLive(false));
+  $('btn-narrate').addEventListener('click', () => startLive(true));
 
   // ---------- DEMO: simulated drive through the same pipeline ----------
   $('btn-demo').addEventListener('click', () => {

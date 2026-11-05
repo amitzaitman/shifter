@@ -9,7 +9,7 @@ const fs = require('fs'), path = require('path');
 const L = require('./lib.js');
 const args = process.argv.slice(2), opt = (n) => { const i = args.indexOf(n); return i >= 0 ? args[i + 1] : undefined; };
 let files = args.filter(a => !a.startsWith('--') && !/^\d+$/.test(a) && !['eco', 'sport'].includes(a));
-files = files.flatMap(f => fs.statSync(f).isDirectory() ? fs.readdirSync(f).filter(x => x.endsWith('.json')).map(x => path.join(f, x)) : [f]);
+files = files.flatMap(f => fs.statSync(f).isDirectory() ? fs.readdirSync(f).filter(x => x.endsWith('.json') && !/\.(narration|labels)\.json$/.test(x)).map(x => path.join(f, x)) : [f]);
 if (!files.length) { console.error('usage: node tests/evaluate.js <folder|files…> [--until S] [--mode eco|sport]'); process.exit(1); }
 const until = opt('--until') ? +opt('--until') : null, settings = opt('--mode') ? { mode: opt('--mode') } : {};
 const K = ['smooth', 'ok', 'harsh'], pool = { found: 0, labels: 0, unl: 0, conf: {}, j: [], v: [], none: 0, noneFlagged: 0 };
@@ -18,10 +18,13 @@ const auc = (pairs) => { const pos = pairs.filter(p => p.y).map(p => p.x), neg =
 for (const f of files) {
   const rec = JSON.parse(fs.readFileSync(f, 'utf8'));
   if (rec.format !== 'shift-coach-recording') { console.log(`skip ${f}: not a recording`); continue; }
-  const { coach, offset, align, seconds, rp } = L.replay(rec, { until, settings });
-  const truth = L.truthOf(rec, offset, until ? until : null);
+  // narrated drives: ignore rpm while the driver talks, and use the labels written from the transcript
+  const nar = L.narrationOf(f), mask = nar ? nar.segments.map(s => [s.t0, s.t1]) : null;
+  const { coach, offset, align, seconds, rp } = L.replay(rec, { until, settings, mask });
+  const truth = L.truthOf(rec, offset, until ? until : null, L.labelsOf(f));
   const kinds = coach.events.reduce((a, e) => (a[e.kind || 'up'] = (a[e.kind || 'up'] || 0) + 1, a), {});
   const rpmPct = Math.round(100 * rp.rpm.filter(p => p[1]).length / (rp.rpm.length || 1));
+  if (nar) console.log(`\n(narration: ${nar.segments.length} spoken segments masked from the rpm${L.labelsOf(f) ? `, ${L.labelsOf(f).length} labels from it` : ', no labels written yet'})`);
   console.log(`\n${path.basename(f)}  ${(seconds / 60).toFixed(1)} min  build ${rec.meta && rec.meta.build || '-'}  offset ${offset.toFixed(2)} s (agree ${align.agree != null ? Math.round(align.agree * 100) + '%' : '-'})`);
   console.log(`  events ${coach.events.length} ${JSON.stringify(kinds)}  candidates ${coach.candidates.length}  rpm on ${rpmPct}% of frames  mount shake ${coach.mountShake() != null ? coach.mountShake().toFixed(2) : '-'}  re-mounts ${coach.remounts}`);
   if (!truth.length) { console.log('  no labels or driver tags in this file'); continue; }
