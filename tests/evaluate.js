@@ -19,12 +19,12 @@ for (const f of files) {
   const rec = JSON.parse(fs.readFileSync(f, 'utf8'));
   if (rec.format !== 'shift-coach-recording') { console.log(`skip ${f}: not a recording`); continue; }
   // narrated drives: ignore rpm while the driver talks, and use the labels written from the transcript
-  const nar = L.narrationOf(f), mask = nar ? nar.segments.filter(s => s.ok !== false).map(s => [s.t0, s.t1]) : null;
+  const nar = L.narrationOf(f), mask = L.speechMask(nar);
   const { coach, offset, align, seconds, rp } = L.replay(rec, { until, settings, mask });
   const truth = L.truthOf(rec, offset, until ? until : null, L.labelsOf(f));
   const kinds = coach.events.reduce((a, e) => (a[e.kind || 'up'] = (a[e.kind || 'up'] || 0) + 1, a), {});
   const rpmPct = Math.round(100 * rp.rpm.filter(p => p[1]).length / (rp.rpm.length || 1));
-  if (nar) console.log(`\n(narration: ${nar.segments.length} spoken segments masked from the rpm${L.labelsOf(f) ? `, ${L.labelsOf(f).length} labels from it` : ', no labels written yet'})`);
+  if (nar) console.log(`\n(narration: ${nar.segments.length} segments, ${mask.length} spoken stretches (${mask.reduce((a, m) => a + m[1] - m[0], 0).toFixed(0)} s) masked from the rpm${L.labelsOf(f) ? `, ${L.labelsOf(f).length} labels from it` : ', no labels written yet'})`);
   console.log(`\n${path.basename(f)}  ${(seconds / 60).toFixed(1)} min  build ${rec.meta && rec.meta.build || '-'}  offset ${offset.toFixed(2)} s (agree ${align.agree != null ? Math.round(align.agree * 100) + '%' : '-'})`);
   console.log(`  events ${coach.events.length} ${JSON.stringify(kinds)}  candidates ${coach.candidates.length}  rpm on ${rpmPct}% of frames  mount shake ${coach.mountShake() != null ? coach.mountShake().toFixed(2) : '-'}  re-mounts ${coach.remounts}`);
   if (!truth.length) { console.log('  no labels or driver tags in this file'); continue; }
@@ -33,6 +33,7 @@ for (const f of files) {
   console.log(`  truth ${truth.length} (${truth.filter(x => x.src === 'passenger').length} passenger, ${truth.filter(x => x.src === 'driver').length} driver)  found ${found}/${real.length}  engine events with no label ${unlabelled.length}`);
   pool.found += found; pool.labels += real.length; pool.unl += unlabelled.length;
   for (const r of rows) {
+    if (!pool.conf[r.l.k]) continue;  // '?': a change was said but not how it felt (counts for 'found' only)
     pool.conf[r.l.k][r.e ? (r.e.smooth || '-') : '-']++;
     if (r.l.k === 'none') { pool.none++; if (r.e) pool.noneFlagged++; continue; }
     if (r.e && L.excess(r.e) != null) pool.j.push({ x: L.excess(r.e), y: r.l.k !== 'smooth' });

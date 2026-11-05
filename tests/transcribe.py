@@ -1,6 +1,6 @@
 """Transcribe the driver's narration in a recording (Hebrew) with Whisper, on the recording clock.
 
-    python3 tests/transcribe.py data/drive-20261105-0815.json [--model large-v3] [--lang he] [--from S --to S]
+    python3 tests/transcribe.py data/drive-20261105-0815.json [--model large-v3] [--lang he] [--from S --to S] [--no-prompt]
 
 Writes data/drive-…narration.json next to the recording:
     {"model": …, "segments": [{"t0": s, "t1": s, "text": "…", "ok": bool, "words": [[t0, "word", t1], …]}, …]}
@@ -8,6 +8,9 @@ and prints the transcript with times (m:ss on the recording clock). Reading it, 
 recording as data/drive-….labels.json = [[t, 'smooth'|'ok'|'harsh'|'none', 'up'|'down'|'launch', 'what was said'], …].
 evaluate.js and dataset.js pick up both files by themselves: the spoken segments are masked from the rpm (the voice
 sits in the same band as the engine), and the labels count as truth (said right after a change, like a passenger tap).
+
+--no-prompt: transcribe without the domain prompt. The prompt helps, but can also put its own words in ('קפץ', 'חלק')
+where the speech is unclear; check doubtful moments both ways (with --from/--to).
 
 Needs: pip install faster-whisper, and ffmpeg. The model downloads on first use (large-v3 is ~3 GB; small ~0.5 GB).
 """
@@ -46,15 +49,15 @@ def main():
                 pieces, _ = model.transcribe(audio, language=lang, vad_filter=True, word_timestamps=True,
                                              vad_parameters=dict(min_silence_duration_ms=500, speech_pad_ms=200, max_speech_duration_s=12),
                                              condition_on_previous_text=False,
-                                             initial_prompt='העברתי הילוך. הורדתי לשני. היה חלק. קפץ. טלטלה. יוצא מהרמזור.')
+                                             initial_prompt=None if '--no-prompt' in sys.argv else 'העברתי הילוך. הורדתי לשני. היה חלק. קפץ. טלטלה. יוצא מהרמזור.')
                 for p in pieces:
                     t0 = t0s + a0
                     # Whisper's own confidence; used to drop hallucinations (repeated lines, 'speech' over engine noise)
-                    # (a long segment is suspect only when it has few words: 'speech' stretched over engine noise)
-                    dur, nw = p.end - p.start, len(p.words or [])
-                    ok = p.no_speech_prob < 0.6 and p.avg_logprob > -1.0 and p.compression_ratio < 2.4 and (dur < 15 or nw >= 0.3 * dur)
+                    # (no length rule: VAD-joined remarks a minute apart make long, sparse segments that are real speech;
+                    #  the rpm mask works on the words, so a wrong long segment costs little)
+                    ok = p.no_speech_prob < 0.6 and p.avg_logprob > -1.0 and p.compression_ratio < 2.4
                     out.append({'t0': round(t0 + p.start, 2), 't1': round(t0 + p.end, 2), 'text': p.text.strip(), 'ok': bool(ok),
-                                'logprob': round(p.avg_logprob, 2), 'noSpeech': round(p.no_speech_prob, 2),
+                                'logprob': round(p.avg_logprob, 2), 'noSpeech': round(p.no_speech_prob, 2), 'cr': round(p.compression_ratio, 2),
                                 'words': [[round(t0 + w.start, 2), w.word.strip(), round(t0 + w.end, 2)] for w in (p.words or [])]})
         # Whisper's other hallucination: the same short line repeated; keep the first, drop the repeats
         norm = lambda t: ''.join(ch for ch in t if ch.isalnum())

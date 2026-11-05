@@ -12,7 +12,7 @@ for (const f of files) {
   const rec = JSON.parse(fs.readFileSync(f, 'utf8'));
   if (rec.format !== 'shift-coach-recording') continue;
   const nar = L.narrationOf(f);
-  const { coach, offset } = L.replay(rec, { mask: nar ? nar.segments.filter(x => x.ok !== false).map(x => [x.t0, x.t1]) : null });
+  const { coach, offset } = L.replay(rec, { mask: L.speechMask(nar) });
   const truth = L.truthOf(rec, offset, null, L.labelsOf(f)), cands = L.labelCandidates(truth, coach.candidates, coach.startT);
   const shake = coach.mountShake();
   for (const c of cands) {

@@ -27,10 +27,26 @@ function narrationOf(file) {
   const f = file.replace(/\.json$/, '.narration.json');
   return fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, 'utf8')) : null;
 }
-// labels written from the narration (by reading the transcript): data/x.labels.json = [[t, 'smooth'|'ok'|'harsh'|'none', kind?, note?], …]
+// labels written from the narration (by reading the transcript): data/x.labels.json = [[t, 'smooth'|'ok'|'harsh'|'none'|'?', kind?, note?], …]
+// ('?' = the driver named a change but not how it felt: it counts for detection, not for smoothness)
 function labelsOf(file) {
   const f = file.replace(/\.json$/, '.labels.json');
   return fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, 'utf8')) : null;
+}
+// the stretches to hide from the rpm tracker: each spoken word (when the narration has word end times), else whole
+// segments. Segments flagged as hallucinations (ok: false) are skipped. Words closer than 0.3 s are merged.
+function speechMask(nar) {
+  if (!nar) return null;
+  const iv = [];
+  for (const s of nar.segments) {
+    if (s.ok === false) continue;
+    const ws = (s.words || []).filter(w => w.length >= 3);
+    if (ws.length) for (const w of ws) iv.push([w[0], w[2]]); else iv.push([s.t0, s.t1]);
+  }
+  iv.sort((a, b) => a[0] - b[0]);
+  const out = [];
+  for (const v of iv) { const l = out[out.length - 1]; if (l && v[0] <= l[1] + 0.3) l[1] = Math.max(l[1], v[1]); else out.push(v.slice()); }
+  return out;
 }
 function replay(rec, opt) {
   opt = opt || {};
@@ -79,4 +95,4 @@ function labelCandidates(truth, cands, startT) {
 }
 const excess = (e) => e && e.jerk != null ? Math.max(0, e.jerk - (e.jerkBase || 0)) : null;
 const vdvExcess = (e) => e && e.vdv != null ? (e.vdvBase ? Math.max(0, e.vdv ** 4 - e.vdvBase ** 4) ** 0.25 : e.vdv) : null;
-module.exports = { E, SR, audioOf, narrationOf, labelsOf, replay, truthOf, matchEvents, labelCandidates, excess, vdvExcess };
+module.exports = { E, SR, audioOf, narrationOf, labelsOf, speechMask, replay, truthOf, matchEvents, labelCandidates, excess, vdvExcess };
