@@ -23,7 +23,6 @@
   --frame: var(--line);
   --fill: var(--bg);
   --frame-w: clamp(14px, 4.2vmin, 30px);
-  --bar-w: clamp(24px, 7.5vmin, 52px);
   --coffee: #c8925f;
   color-scheme: dark;
 }
@@ -85,23 +84,20 @@ label.btn { position: relative; }
 
 /* ---------- start screen ---------- */
 .hero { display: grid; grid-template-columns: auto 1fr; gap: 18px; align-items: center; }
-/* mini stage: the bar fills, then the screen flashes green */
-.hero-tile { width: 112px; aspect-ratio: 1; max-width: 100%; border-radius: 22px; background: var(--surface); animation: tileFlash 4s infinite; }
+/* mini stage: the cup, and the screen lighting up green, yellow, red (with a shake) after a change */
+.hero-tile { width: 112px; aspect-ratio: 1; max-width: 100%; border-radius: 22px; background: var(--surface); border: 1px solid var(--line); animation: tileFlash 6s infinite; }
 .hero-tile svg { display: block; width: 100%; height: 100%; }
-.hero-tile .t { fill: none; stroke: var(--line); stroke-width: 10; }
-.hero-tile .f { fill: none; stroke-width: 10; stroke-dasharray: 100 100; animation: tileFill 4s infinite; }
-@keyframes tileFill {
-  0% { stroke-dashoffset: 100; stroke: var(--good); }
-  40% { stroke: var(--slight); }
-  55% { stroke-dashoffset: 12; stroke: var(--accent); opacity: 1; }
-  58% { opacity: .3; } 61% { opacity: 1; } 64% { opacity: .3; }
-  66% { stroke-dashoffset: 12; opacity: 1; stroke: var(--accent); }
-  72%, 100% { stroke-dashoffset: 70; stroke: var(--good); }
-}
+.hero-tile .rim { fill: none; stroke: color-mix(in oklab, var(--fg) 72%, transparent); stroke-width: 7; stroke-linejoin: round; stroke-linecap: round; }
+.hero-tile .liq { fill: var(--coffee); }
 @keyframes tileFlash {
-  0%, 66% { background: var(--surface); }
-  70% { background: color-mix(in oklab, var(--good) 60%, var(--bg)); }
-  100% { background: var(--surface); }
+  0%, 6% { background: var(--surface); }
+  10% { background: color-mix(in oklab, var(--good) 62%, var(--bg)); }
+  28%, 36% { background: var(--surface); }
+  40% { background: color-mix(in oklab, var(--slight) 62%, var(--bg)); }
+  58%, 66% { background: var(--surface); transform: none; }
+  70% { background: color-mix(in oklab, var(--late) 62%, var(--bg)); transform: translateX(-4px); }
+  72% { transform: translateX(4px); } 74% { transform: translateX(-3px); } 76% { transform: translateX(2px); } 78% { transform: none; }
+  92%, 100% { background: var(--surface); }
 }
 .hero p { color: var(--muted); max-width: 46ch; }
 
@@ -110,7 +106,6 @@ label.btn { position: relative; }
 .card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
 .key { display: flex; align-items: center; gap: 10px; font-size: 14px; }
 .sw { width: 26px; height: 26px; border-radius: 6px; flex: none; }
-.sw.frame { border: 6px solid currentColor; background: var(--bg); }
 .sw.fill { background: currentColor; }
 .c-good { color: var(--good); } .c-slight { color: var(--slight); } .c-late { color: var(--late); } .c-early { color: var(--early); } .c-accent { color: var(--accent); }
 .live-keys { grid-column: 1 / -1; }
@@ -145,30 +140,14 @@ label.btn { position: relative; }
   padding-left: env(safe-area-inset-left, 0px);
   padding-right: env(safe-area-inset-right, 0px);
 }
-/* the rpm bar: fills from the bottom centre up both sides, full at the end of the target zone */
-#barbox {
-  position: absolute; pointer-events: none; direction: ltr;
-  top: calc(env(safe-area-inset-top, 0px) + 6px); right: calc(env(safe-area-inset-right, 0px) + 6px);
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 6px); left: calc(env(safe-area-inset-left, 0px) + 6px);
-}
-#bar { display: block; width: 100%; height: 100%; overflow: visible; }
-#bar path { fill: none; stroke-width: var(--bar-w); }
-/* glow: its own layer, blurred by CSS (composited on the GPU in Safari, unlike an SVG blur filter) */
-#glowbox { position: absolute; inset: 0; filter: blur(calc(var(--bar-w) * 0.55)); will-change: filter; transform: translateZ(0); }
-#glowbox svg { display: block; width: 100%; height: 100%; overflow: visible; }
-#glowbox path { fill: none; stroke-width: calc(var(--bar-w) * 2.2); }
-#bar .track { stroke: var(--raise); }
-#bar .zone { stroke: color-mix(in oklab, var(--fg) 30%, var(--raise)); }
-#bar .mark { stroke: var(--fg); stroke-linecap: round; stroke-width: calc(var(--bar-w) * 1.3); }
 @media (prefers-reduced-motion: reduce) {
-  .hero-tile, .hero-tile .f { animation: none; }
-  .hero-tile .f { stroke-dashoffset: 30; stroke: var(--good); }
+  .hero-tile { animation: none; background: color-mix(in oklab, var(--good) 40%, var(--surface)); }
 }
 .topbar { display: flex; align-items: center; justify-content: space-between; gap: 10px;
-  margin: calc(var(--bar-w) + 12px) calc(var(--bar-w) + 14px) 0; }
+  margin: calc(var(--frame-w) + 6px) calc(var(--frame-w) + 8px) 0; }
 /* the cup is the centrepiece; the gear sits above it, readable but quiet. Shadow keeps it legible on any feedback colour. */
 .dash { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1dvh; min-height: 0;
-  padding: 0 calc(var(--bar-w) + 16px); text-shadow: 0 2px 18px color-mix(in oklab, var(--bg) 55%, transparent); }
+  padding: 0 calc(var(--frame-w) + 10px); text-shadow: 0 2px 18px color-mix(in oklab, var(--bg) 55%, transparent); }
 .gear { flex: none; font-family: var(--font-num); font-weight: 700; font-size: clamp(56px, min(13vh, 24vw), 140px); font-size: clamp(56px, min(13dvh, 24vw), 140px); line-height: .9; color: color-mix(in oklab, var(--fg) 72%, transparent); font-variant-numeric: tabular-nums; }
 .gear:empty { display: none; }
 /* optional rpm readout, for checking against the car's tachometer */
@@ -191,10 +170,10 @@ label.btn { position: relative; }
 @keyframes narrDot { 50% { opacity: .45; } }
 .narr-time { font-family: var(--font-num); font-size: 44px; font-weight: 600; }
 .narrate .narr { display: flex; }
-.narrate .dash, .narrate #barbox, .narrate .calib, .narrate .calib-count, .narrate #s-gears, .narrate #d-mode { display: none !important; }
+.narrate .dash, .narrate .calib, .narrate .calib-count, .narrate #s-gears { display: none !important; }
 @media (prefers-reduced-motion: reduce) { .narr-dot { animation: none; } }
 /* calibration drive: a passenger taps one button right after each gear change, rating how it felt */
-.calib { display: none; gap: 8px; margin: 0 calc(var(--bar-w) + 14px) 10px; }
+.calib { display: none; gap: 8px; margin: 0 calc(var(--frame-w) + 8px) 10px; }
 .calib-on .calib { display: grid; grid-template-columns: repeat(3, 1fr); }
 .calib button { min-height: 64px; border-radius: 16px; border: 0; font-size: 18px; font-weight: 700; color: #071015; transition: transform .08s, filter .08s; }
 .calib button:active, .calib button.hit { transform: scale(.94); filter: brightness(1.25); }
@@ -240,7 +219,7 @@ label.btn { position: relative; }
 .stat .v { font-family: var(--font-num); font-size: 30px; font-weight: 600; line-height: 1.1; }
 .stat .l { font-size: 12px; color: var(--muted); }
 .mosaic { display: grid; grid-template-columns: repeat(auto-fill, minmax(46px, 1fr)); gap: 8px; }
-.tile { aspect-ratio: 1; border-radius: 10px; border: 6px solid var(--line); background: var(--raise); padding: 0; position: relative; }
+.tile { aspect-ratio: 1; border-radius: 10px; border: 2px solid var(--line); background: var(--raise); padding: 0; position: relative; }
 .tile[aria-pressed="true"] { outline: 2px solid var(--fg); outline-offset: 2px; }
 .tile span { direction: ltr; unicode-bidi: isolate; position: absolute; inset: 0; display: grid; place-items: center; font-family: var(--font-num); font-size: 12px; color: var(--fg); text-shadow: 0 1px 2px color-mix(in oklab, var(--bg) 80%, transparent); font-weight: 600; }
 .detail { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px 16px; }
@@ -325,10 +304,10 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
   <main class="view" id="view-drive">
     <div class="wrap">
       <section class="hero">
-        <div class="hero-tile" aria-hidden="true"><svg viewBox="0 0 112 112"><rect class="t" x="5" y="5" width="102" height="102" rx="17"/><path class="f" pathLength="100" d="M56 107 H90 A17 17 0 0 0 107 90 V22 A17 17 0 0 0 90 5 H56"/><path class="f" pathLength="100" d="M56 107 H22 A17 17 0 0 1 5 90 V22 A17 17 0 0 1 22 5 H56"/></svg></div>
+        <div class="hero-tile" aria-hidden="true"><svg viewBox="-30 -36 184 184"><defs><clipPath id="hero-cup"><path d="M8 10 H112 L103 108 Q101 117 92 117 H28 Q19 117 17 108 Z"/></clipPath></defs><g clip-path="url(#hero-cup)"><path class="liq" d="M0 46 L120 34 V130 H0 Z"/></g><path class="rim" d="M8 10 H112 L103 108 Q101 117 92 117 H28 Q19 117 17 108 Z"/><path class="rim" d="M110 32 q24 4 20 27 q-3 17 -24 17"/></svg></div>
         <div style="display:flex;flex-direction:column;gap:8px;min-width:0">
           <h2>המסך הוא הפידבק</h2>
-          <p>שים את הטלפון במעמד וסע. אחרי כל העברה, הורדה או זינוק המסך נדלק לפי החלקות: ירוק חלק, צהוב טלטלה, אדום קפיצה (וגם רועד). הפס סביב המסך מתמלא עם הסל"ד ומהבהב כשנוח להעביר.</p>
+          <p>שים את הטלפון במעמד וסע. אחרי כל העברה, הורדה או זינוק המסך נדלק לפי החלקות: ירוק חלק, צהוב טלטלה, אדום קפיצה (וגם רועד). כוס הקפה באמצע מראה את התאוצה בזמן אמת.</p>
         </div>
       </section>
 
@@ -358,14 +337,14 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
           <div class="key"><span class="sw fill c-good"></span>ירוק: חלקה, הנוסעים לא הרגישו</div>
           <div class="key"><span class="sw fill c-slight"></span>צהוב: טלטלה קלה</div>
           <div class="key"><span class="sw fill c-late"></span>אדום ורעידה: קפיצה</div>
-          <div class="key muted">אחרי כל העברה למעלה, הורדת הילוך וזינוק. כוס הקפה בתחתית המסך מראה את התאוצה בזמן אמת: היא נשפכת כשיש קפיצה. בסיכום, לחיצה על העברה מראה למה היא קיבלה את הציון.</div>
+          <div class="key muted">אחרי כל העברה למעלה, הורדת הילוך וזינוק. בסיכום, לחיצה על העברה מראה למה היא קיבלה את הציון.</div>
         </div>
         <div class="card">
-          <h3>הפס: סל"ד ותזמון</h3>
-          <div class="key"><span class="sw frame c-good"></span>מתמלא ככל שהמנוע מסתובב מהר יותר</div>
-          <div class="key"><span class="sw frame c-accent"></span>מהבהב: להעביר עכשיו</div>
-          <div class="key"><span class="sw frame c-late"></span>אדום: עברת את הנקודה, או מנוע חנוק</div>
-          <div class="key muted">נקודה על הפס מראה איפה העברת למעלה. הצבע שלה: ירוק בזמן, צהוב קצת מאוחר, אדום מוקדם או מאוחר.</div>
+          <h3>כוס הקפה: תאוצה</h3>
+          <div class="key"><span class="sw fill" style="color:var(--coffee)"></span>הנוזל נוטה עם התאוצה: בהאצה הוא עולה ימינה, בבלימה שמאלה</div>
+          <div class="key"><span class="sw fill" style="color:var(--coffee);opacity:.6"></span>אדוות: טלטלה</div>
+          <div class="key"><span class="sw fill" style="color:var(--coffee);opacity:.35"></span>נשפך: קפיצה</div>
+          <div class="key muted">המטרה: לנהוג כך שהקפה לא נשפך.</div>
         </div>
       </section>
     </div>
@@ -379,23 +358,6 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
   <!-- ===== SETTINGS ===== -->
   <main class="view" id="view-settings" hidden>
     <div class="wrap">
-      <div class="field">
-        <h3>מצב</h3>
-        <div class="seg" id="seg-mode">
-          <button data-mode="eco" aria-pressed="true">חסכוני</button>
-          <button data-mode="sport" aria-pressed="false">ספורטיבי</button>
-        </div>
-      </div>
-      <div class="field" id="f-eco">
-        <div class="top"><span>נקודת העברה בחסכוני</span><span class="num" id="v-eco">2500</span></div>
-        <input type="range" id="in-eco" min="1800" max="3400" step="100" value="2500">
-        <p class="small muted" id="eco-desc"></p>
-      </div>
-      <div class="field" id="f-red">
-        <div class="top"><span>קו אדום</span><span class="num" id="v-red">6500</span></div>
-        <input type="range" id="in-red" min="4500" max="8000" step="250" value="6500">
-        <p class="small muted" id="red-desc"></p>
-      </div>
       <div class="field">
         <h3>מספר הילוכים</h3>
         <div class="seg" id="seg-gears">
@@ -422,7 +384,6 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
         </div>
       </div>
       <div class="card">
-        <div class="switch"><label for="in-sound">צפצוף כשצריך להעביר</label><input type="checkbox" id="in-sound"></div>
         <div class="switch"><label for="in-nums">להציג את מספר ההילוך על המסך</label><input type="checkbox" id="in-nums" checked></div>
         <div class="switch"><label for="in-rpm">להציג סל"ד (כדי לבדוק מול שעון הסל"ד ברכב)</label><input type="checkbox" id="in-rpm"></div>
         <div class="switch"><label for="in-cup">כוס קפה שמראה את התאוצה בזמן נסיעה</label><input type="checkbox" id="in-cup" checked></div>
@@ -489,7 +450,6 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
 
 <!-- ===== STAGE (full screen while driving) ===== -->
 <div id="stage" hidden dir="rtl">
-  <div id="barbox" aria-hidden="true"><div id="glowbox"><svg id="barglow"></svg></div><svg id="bar"></svg></div>
   <div class="topbar">
       <div class="sensors">
         <span class="sens" id="s-mic" role="img" aria-label="מיקרופון">
@@ -533,7 +493,6 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
   <div class="calib-count" id="calib-count">לנוסע: לחיצה אחת מיד אחרי כל העברה, הורדה או זינוק</div>
   <div class="dock">
     <div class="row" style="flex-wrap:nowrap">
-      <button class="chip" id="d-mode">חסכוני</button>
       <button class="btn" id="btn-stop">סיום</button>
     </div>
   </div>
@@ -553,16 +512,14 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     get(k, d) { try { const v = localStorage.getItem('shiftcoach.' + k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
     set(k, v) { try { localStorage.setItem('shiftcoach.' + k, JSON.stringify(v)); } catch (e) { /* storage blocked */ } }
   };
-  const DEFAULTS = { mode: 'eco', ecoTarget: 2500, redline: 6500, nGears: 5, cylinders: 4, rpmScale: 1, sound: false, numbers: true, record: true, cup: true, showRpm: false, calib: false };
+  const DEFAULTS = { mode: 'eco', ecoTarget: 2500, redline: 6500, nGears: 5, cylinders: 4, rpmScale: 1, numbers: true, record: true, cup: true, showRpm: false, calib: false };
   let settings = Object.assign({}, DEFAULTS, LS.get('settings', {}));
   let gearModel = E.GearModel.fromJSON(LS.get('gears', null), settings.nGears);
   let session = LS.get('session', null);
   let run = null;
   let feedback = null;
 
-  const GRADE_COLOR = { good: 'var(--good)', slight: 'var(--slight)', late: 'var(--late)', early: 'var(--early)' };
   const SMOOTH_KEY = { smooth: 'good', ok: 'slight', harsh: 'late' };
-  const GRADE_WORD = { good: 'בזמן', slight: 'קצת מאוחר', late: 'מאוחר מדי', early: 'מוקדם מדי' };
   const KIND_WORD = { up: 'העברה', down: 'הורדת הילוך', launch: 'זינוק' };
   const SMOOTH_WORD = { smooth: 'חלקה', ok: 'טלטלה קלה', harsh: 'קפיצה' };
   const fillOf = (smooth) => smooth ? `color-mix(in oklab, var(--${SMOOTH_KEY[smooth]}) 72%, var(--bg))` : 'var(--surface)';
@@ -587,66 +544,9 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
 
   function notice(text) { $('notice').hidden = !text; $('notice-text').textContent = text || ''; }
 
-  // ---------- rpm bar (two halves of a rounded rect, bottom centre → top centre) ----------
+
   const SVGNS = 'http://www.w3.org/2000/svg';
-  const bar = { w: 0, h: 0, len: 0, layers: {} };
-  function layoutBar() {
-    const svg = $('bar'), r = svg.getBoundingClientRect();
-    if (!r.width || (r.width === bar.w && r.height === bar.h)) return;
-    bar.w = r.width; bar.h = r.height;
-    svg.setAttribute('viewBox', `0 0 ${r.width} ${r.height}`);
-    // measure the real stroke width from a probe path (the svg's own stroke-width is the 1px default)
-    const probe = document.createElementNS(SVGNS, 'path'); probe.setAttribute('class', 'track'); svg.appendChild(probe);
-    const sw = parseFloat(getComputedStyle(probe).strokeWidth) || 30; probe.remove();
-    const i = sw / 2, w = r.width, h = r.height, c = w / 2, rr = Math.max(6, 44 - i);  // outer corner ~44px, close to the display's own curve
-    const half = {
-      r: `M${c} ${h - i} H${w - i - rr} A${rr} ${rr} 0 0 0 ${w - i} ${h - i - rr} V${i + rr} A${rr} ${rr} 0 0 0 ${w - i - rr} ${i} H${c}`,
-      l: `M${c} ${h - i} H${i + rr} A${rr} ${rr} 0 0 1 ${i} ${h - i - rr} V${i + rr} A${rr} ${rr} 0 0 1 ${i + rr} ${i} H${c}`
-    };
-    svg.textContent = '';
-    const gsvg = $('barglow'); gsvg.setAttribute('viewBox', `0 0 ${w} ${h}`); gsvg.textContent = '';
-    for (const name of ['glow', 'track', 'zone', 'fill', 'mark']) {
-      bar.layers[name] = ['r', 'l'].map(side => {
-        const pth = document.createElementNS(SVGNS, 'path');
-        pth.setAttribute('d', half[side]); pth.setAttribute('class', name);
-        (name === 'glow' ? gsvg : svg).appendChild(pth); return pth;
-      });
-    }
-    bar.len = bar.layers.track[0].getTotalLength();
-  }
-  window.addEventListener('resize', () => { bar.w = 0; });
-  // draw the segment [a, b] (fractions of a half) on a layer
-  function seg(name, a, b, color, opacity) {
-    const L = bar.len, A = Math.max(0, Math.min(1, a)) * L, B = Math.max(0, Math.min(1, b)) * L;
-    for (const p of bar.layers[name]) {
-      const on = B - A > 0.01;  // hide empty segments: a round cap on a zero-length dash still draws a dot
-      p.style.visibility = on ? '' : 'hidden';
-      if (on) { p.style.strokeDasharray = `${B - A} ${L * 2}`; p.style.strokeDashoffset = -A; }
-      if (color) p.style.stroke = color;
-      p.style.opacity = opacity == null ? '' : opacity;
-    }
-  }
-  const barFrac = (rpm, th) => (rpm - th.ledLo) / (th.goodHi - th.ledLo);
 
-  // ---------- beeps (above the analysed band, so they don't fool the mic) ----------
-  let beepCtx = null;
-  function beep(kind) {
-    if (!settings.sound || (run && run.narrate)) return;
-    try {
-      const ctx = (run && run.ctx) || beepCtx || (beepCtx = new (window.AudioContext || window.webkitAudioContext)());
-      const tones = kind === 'shift' ? [[2400, 0], [2400, 0.13]] : [[2100, 0]];
-      for (const [f, d] of tones) {
-        const o = ctx.createOscillator(), g = ctx.createGain();
-        o.frequency.value = f; o.type = 'sine';
-        g.gain.setValueAtTime(0.0001, ctx.currentTime + d);
-        g.gain.exponentialRampToValueAtTime(0.25, ctx.currentTime + d + 0.01);
-        g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + d + 0.09);
-        o.connect(g).connect(ctx.destination); o.start(ctx.currentTime + d); o.stop(ctx.currentTime + d + 0.1);
-      }
-    } catch (e) { /* audio unavailable */ }
-  }
-
-  // ---------- one driving run (live, demo) ----------
   // ---------- learning from the driver's tags ----------
   // Every 'how did it feel?' tag on a motion-graded change becomes a sample (jerk above the road, the feel, the
   // drive's mount shake). After each tag the thresholds are refitted (E.learnThresholds) and the next drive uses them.
@@ -683,17 +583,14 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     calibN = 0; $('calib-count').textContent = 'לנוסע: לחיצה אחת מיד אחרי כל העברה, הורדה או זינוק';
     resetCup();
     pillsKey = ''; ['s-mic', 's-gps', 's-mot'].forEach(id => { $(id).dataset.st = ''; });
-    $('d-mode').textContent = settings.mode === 'sport' ? 'ספורטיבי' : 'חסכוני';
     document.body.style.overflow = 'hidden';
     feedback = null; resetColour();
     requestAnimationFrame(frame);
   }
 
   // ---------- continuous colour ----------
-  // The bar's length and colour follow a smoothed rpm (green → yellow → blue → red); it flashes at the shift point,
-  // with hysteresis so noisy rpm doesn't flicker it. Smoothness is the point of the app, so after every gear change
-  // (up, down, launch) the whole screen lights up by smoothness like a traffic light (snaps in, fades out) and shakes
-  // if it was harsh. Timing is secondary: a dot on the bar where you shifted up, coloured by the timing grade.
+  // Smoothness is the point of the app (timing is not shown at all): after every gear change (up, down, launch) the
+  // whole screen lights up by smoothness like a traffic light (snaps in, fades out) and shakes if it was harsh.
   const cssv = getComputedStyle(document.documentElement);
   const C = {};
   for (const n of ['bg', 'surface', 'line', 'good', 'slight', 'accent', 'late', 'early']) {
@@ -703,20 +600,9 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
   const mixc = (a, b, k) => a.map((v, i) => v + (b[i] - v) * k);
   const dim = (c, k) => mixc(C.bg, c, k);
   const rgb = (c) => `rgb(${c.map(Math.round).join(',')})`;
-  const RPM_TAU = 0.3, LIVE_TAU = 0.15, SNAP_TAU = 0.04, FADE_TAU = 0.45, PULSE_HYST = 120;
-  function liveColor(rpm, th) {
-    const stops = [[th.ledLo, dim(C.good, 0.5)], [th.near, C.good], [(th.near + th.prompt) / 2, C.slight],
-                   [th.prompt, C.accent], [th.goodHi, C.accent], [th.goodHi + 250, C.late]];
-    if (rpm <= stops[0][0]) return stops[0][1];
-    for (let i = 1; i < stops.length; i++) {
-      const [a, ca] = stops[i - 1], [b, cb] = stops[i];
-      if (rpm <= b) return mixc(ca, cb, (rpm - a) / (b - a || 1));
-    }
-    return C.late;
-  }
+  const LIVE_TAU = 0.15, SNAP_TAU = 0.04, FADE_TAU = 0.45;
   let col = null;
-  function resetColour() { col = { fi: null, rpm: null, t: null, pulse: false, shake: null, shakeEv: null, smoothT: 0 }; }
-  const LIGHT = { good: 'good', slight: 'slight', late: 'late', early: 'late' };
+  function resetColour() { col = { fi: null, t: null, shake: null, shakeEv: null, smoothT: 0 }; }
   const reduceMotion = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
   // shake amplitude in px from the jerk (m/s³) when we have it, else from the smoothness class
   function shakeAmp(ev) {
@@ -798,30 +684,8 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     const L = run.coach.live(t);
     const st = $('stage');
     const dt = col.t == null ? 0 : Math.min(0.25, Math.max(0, t - col.t)); col.t = t;
-    col.rpm = L.rpm == null ? null : col.rpm == null ? L.rpm : col.rpm + (L.rpm - col.rpm) * (1 - Math.exp(-dt / RPM_TAU));
-    const r = col.rpm, th = L.th;
-    layoutBar();
 
-    // live bar
-    let barCol, flash = 1;
-    if (L.state === 'nosignal' || r == null) barCol = null;
-    else if (L.state === 'low') barCol = C.late;
-    else if (L.top) barCol = C.good;
-    else barCol = liveColor(r, th);
-    if (r == null || L.top || L.state === 'low') col.pulse = false;
-    else if (!col.pulse && r >= th.prompt && r <= th.goodHi) { col.pulse = true; if (!feedback) beep('shift'); }
-    else if (col.pulse && (r < th.prompt - PULSE_HYST || r > th.goodHi + PULSE_HYST)) col.pulse = false;
-    if (col.pulse && !reduceMotion) flash = 0.35 + 0.65 * (0.5 + 0.5 * Math.cos(t * 2 * Math.PI * 2.4));
-    seg('track', 0, 1);
-    if (L.top) seg('zone', 0, 0); else seg('zone', barFrac(th.goodLo, th), 1);
-    seg('fill', 0, barCol ? Math.max(0.02, barFrac(r, th)) : 0, barCol ? rgb(barCol) : null, flash);
-    // the glow grows with rpm: barely there at low revs, strong near the shift point
-    const gf = barCol ? Math.max(0, Math.min(1, barFrac(r, th))) : 0;
-    const gs = flash * (0.12 + 0.78 * gf * gf), gl = barCol ? Math.max(0.02, gf) : 0, gc = barCol ? rgb(barCol) : null;
-    seg('glow', 0, gl, gc, gs);
-
-    // after a shift (up, down or launch): the whole screen = smoothness, like a traffic light;
-    // a dot on the bar = timing (upshifts only); a shake if it was harsh
+    // after a shift (up, down or launch): the whole screen = smoothness, like a traffic light; a shake if it was harsh
     let fi = C.bg, tau = LIVE_TAU;
     if (feedback && t < feedback.until) {
       const ev = feedback.ev;
@@ -831,13 +695,8 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
         fi = dim(C[SMOOTH_KEY[ev.smooth]], 0.62 * Math.max(0.35, 1 - Math.max(0, age - 0.6) / 2.4));
         tau = age < 0.5 ? SNAP_TAU : LIVE_TAU;
       }
-      if (ev.kind === 'up' && ev.grade) {
-        const f = barFrac(ev.before, th);
-        seg('mark', f - 0.004, f + 0.004, rgb(mixc(C[LIGHT[ev.grade]], [255, 255, 255], 0.25)), 1);
-      } else seg('mark', 0, 0);
     } else {
       feedback = null; fi = C.bg; tau = FADE_TAU;
-      seg('mark', 0, 0);
     }
     const k = col.fi == null ? 1 : 1 - Math.exp(-dt / tau);
     col.fi = col.fi == null ? fi : mixc(col.fi, fi, k);
@@ -901,11 +760,6 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     run.recorder.label(performance.now() / 1000, b.dataset.k);
     calibN++; $('calib-count').textContent = `סומנו ${calibN}`;
     b.classList.add('hit'); setTimeout(() => b.classList.remove('hit'), 160);
-  });
-  $('d-mode').addEventListener('click', () => {
-    settings.mode = settings.mode === 'sport' ? 'eco' : 'sport'; saveSettings();
-    if (run) run.coach.configure(settings);
-    $('d-mode').textContent = settings.mode === 'sport' ? 'ספורטיבי' : 'חסכוני';
   });
 
   function packSession(coach, source) {
@@ -1364,7 +1218,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
       for (const { t0, a } of list) { const off = Math.round(t0 * sr); for (let ch = 0; ch < a.numberOfChannels; ch++) { const c = a.getChannelData(ch); for (let i = 0; i < c.length; i++) data[off + i] += c[i] / a.numberOfChannels; } }
       const audio = { sampleRate: sr, duration: len / sr };
       // current mode/target settings, but the car (cylinders, gears) from the recording
-      const rp = new E.Replayer(rec, data, audio.sampleRate, { settings: { mode: settings.mode, ecoTarget: settings.ecoTarget, redline: settings.redline } });
+      const rp = new E.Replayer(rec, data, audio.sampleRate, { settings: {} });
       if (rp.frames < 24) throw new Error('short');
       $('analyze-text').textContent = `מנתח ${Math.round(audio.duration)} שניות של נסיעה עם GPS ותאוצה…`;
       const chunk = () => {
@@ -1430,7 +1284,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     w.textContent = '';
     setTimeout(() => { if (!$('archive-card')) { const ac = document.createElement('section'); ac.className = 'card'; ac.id = 'archive-card'; ac.innerHTML = '<h3>נסיעות שמורות</h3><div id="archive-list"><p class="small muted">טוען…</p></div>'; w.appendChild(ac); } renderArchive(); }, 0);
     if (!session) {
-      w.innerHTML = `<div class="empty"><div class="tile" aria-hidden="true"></div><h2>עוד אין נסיעה</h2><p>הפעל הדגמה, נסיעה או ניתוח הקלטה. כל העברה תופיע כאן כריבוע: מסגרת לתזמון, מילוי לחלקות.</p><button class="btn primary" id="go-demo">הפעל הדגמה</button></div>`;
+      w.innerHTML = `<div class="empty"><div class="tile" aria-hidden="true"></div><h2>עוד אין נסיעה</h2><p>הפעל הדגמה, נסיעה או ניתוח הקלטה. כל העברה תופיע כאן כריבוע בצבע החלקות.</p><button class="btn primary" id="go-demo">הפעל הדגמה</button></div>`;
       $('go-demo').addEventListener('click', () => { show('drive'); $('btn-demo').click(); });
       if (recording) w.prepend(recordingCard());
       return;
@@ -1439,14 +1293,14 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     const d = new Date(s.date);
     const head = document.createElement('div');
     head.style.cssText = 'display:flex;flex-direction:column;gap:6px';
-    head.innerHTML = `<h3>${s.source} · ${s.th.mode === 'sport' ? 'ספורטיבי' : 'חסכוני'} · <span class="num">${d.toLocaleDateString('he-IL')} ${d.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}</span></h3><h2>סיכום נסיעה</h2>`;
+    head.innerHTML = `<h3>${s.source} · <span class="num">${d.toLocaleDateString('he-IL')} ${d.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}</span></h3><h2>סיכום נסיעה</h2>`;
     w.appendChild(head);
 
     const smoothKnown = ev.filter(e => e.smooth);
     const stats = document.createElement('div'); stats.className = 'score-row';
     stats.innerHTML = `
       <div class="stat"><div class="v num">${smoothKnown.length ? Math.round(100 * smoothKnown.filter(e => e.smooth === 'smooth').length / smoothKnown.length) + '%' : '–'}</div><div class="l">חלקות</div></div>
-      <div class="stat"><div class="v num">${sum.score != null ? sum.score : '–'}</div><div class="l">ציון תזמון</div></div>
+      <div class="stat"><div class="v num">${smoothKnown.filter(e => e.smooth === 'harsh').length}</div><div class="l">קפיצות</div></div>
       <div class="stat"><div class="v num">${ev.length}</div><div class="l">העברות</div></div>`;
     w.appendChild(stats);
 
@@ -1458,7 +1312,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     }
 
     const mcard = document.createElement('section'); mcard.className = 'card';
-    mcard.innerHTML = `<h3>כל העברה: מילוי = חלקות, מסגרת = תזמון</h3>`;
+    mcard.innerHTML = `<h3>כל העברה, בצבע החלקות</h3>`;
     if (!ev.length) {
       const p = document.createElement('p'); p.className = 'muted small';
       p.textContent = 'לא זוהו העברות הילוך בנסיעה הזו.'; mcard.appendChild(p);
@@ -1466,10 +1320,10 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
       const mos = document.createElement('div'); mos.className = 'mosaic';
       ev.forEach((e, i) => {
         const b = document.createElement('button'); b.className = 'tile';
-        b.style.borderColor = e.grade ? GRADE_COLOR[e.grade] : 'var(--line)'; b.style.background = fillOf(e.smooth);
+        b.style.background = fillOf(e.smooth);
         if (e.feel) b.classList.add(e.feel === 'none' ? 'felt-none' : 'felt');
         b.setAttribute('aria-pressed', String(selected === i));
-        b.setAttribute('aria-label', `${KIND_WORD[e.kind || 'up']} ${i + 1}: ${e.smooth ? SMOOTH_WORD[e.smooth] : 'חלקות לא ידועה'}${e.grade ? ', ' + GRADE_WORD[e.grade] : ''}`);
+        b.setAttribute('aria-label', `${KIND_WORD[e.kind || 'up']} ${i + 1}: ${e.smooth ? SMOOTH_WORD[e.smooth] : 'חלקות לא ידועה'}`);
         const sp = document.createElement('span'); sp.textContent = e.kind === 'launch' ? '0›1' : e.from && e.to ? `${e.from}›${e.to}` : e.kind === 'down' ? '↓' : ''; b.appendChild(sp);
         b.addEventListener('click', () => { selected = selected === i ? null : i; renderSummary(); });
         mos.appendChild(b);
@@ -1486,7 +1340,6 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
         const mm = Math.floor(e.t / 60), ss = String(Math.floor(e.t % 60)).padStart(2, '0');
         det.innerHTML = `
           <div><span class="l">${KIND_WORD[e.kind || 'up']}</span><span class="v num">${e.kind === 'launch' ? '0 → 1' : e.from && e.to ? e.from + ' → ' + e.to : 'לא ידוע'}</span></div>
-          <div><span class="l">תזמון</span><span class="v" style="color:${e.grade ? GRADE_COLOR[e.grade] : 'var(--muted)'}">${e.grade ? GRADE_WORD[e.grade] : '–'}</span></div>
           <div><span class="l">סל"ד לפני ← אחרי</span><span class="v num">${e.before != null ? fmt(e.before) + ' → ' + fmt(e.after) : '–'}</span></div>
           <div><span class="l">חלקות</span><span class="v" style="color:${e.smooth ? `var(--${SMOOTH_KEY[e.smooth]})` : 'var(--muted)'}">${e.smooth ? SMOOTH_WORD[e.smooth] : 'לא ידוע'}</span></div>
           <div><span class="l">משך ההעברה</span><span class="v num">${e.duration != null ? e.duration.toFixed(1) + ' s' : '–'}</span></div>
@@ -1508,9 +1361,8 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
       const sc = { smooth: 0, ok: 0, harsh: 0 }; ev.forEach(e => { if (e.smooth) sc[e.smooth]++; });
       bars.innerHTML = `<h3>התפלגות</h3><div class="bars">
         <div class="bar-line"><span>חלקות</span><div class="stack">${seg(sc, ['smooth', 'ok', 'harsh'], k => `var(--${SMOOTH_KEY[k]})`)}</div></div>
-        <div class="bar-line"><span>תזמון</span><div class="stack">${seg(sum.counts, ['good', 'slight', 'late', 'early'], k => GRADE_COLOR[k])}</div></div>
       </div>
-      <p class="small muted">תזמון: <span class="num">${sum.counts.good}</span> בזמן · <span class="num">${sum.counts.slight}</span> קצת מאוחר · <span class="num">${sum.counts.late}</span> מאוחר · <span class="num">${sum.counts.early}</span> מוקדם</p>`;
+      <p class="small muted">חלקה <span class="num">${sc.smooth}</span> · טלטלה <span class="num">${sc.ok}</span> · קפיצה <span class="num">${sc.harsh}</span></p>`;
       w.appendChild(bars);
     }
 
@@ -1522,7 +1374,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     }
     if (s.trace && s.trace.length > 8) {
       const cc = document.createElement('section'); cc.className = 'card';
-      cc.innerHTML = `<h3>סל"ד לאורך הנסיעה</h3><div class="chart-box"><canvas id="chart" aria-label="גרף סל&quot;ד לאורך הנסיעה"></canvas></div><p class="small muted">הפס הירוק הוא חלון ההעברה. כל ריבוע הוא העברה, בגובה הסל"ד שבו העברת.</p>`;
+      cc.innerHTML = `<h3>סל"ד לאורך הנסיעה</h3><div class="chart-box"><canvas id="chart" aria-label="גרף סל&quot;ד לאורך הנסיעה"></canvas></div><p class="small muted">כל ריבוע הוא העברה, בצבע החלקות, בגובה הסל"ד שבו היא התחילה.</p>`;
       w.appendChild(cc);
       requestAnimationFrame(() => drawChart($('chart'), s));
     }
@@ -1576,8 +1428,6 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     const x = (t) => L + (W - L - R) * t / tMax;
     const y = (r) => T + (H - T - B) * (1 - r / rMax);
     g.font = '11px "Chakra Petch", ui-monospace, monospace';
-    g.fillStyle = col('--good'); g.globalAlpha = 0.12;
-    g.fillRect(L, y(th.goodHi), W - L - R, y(th.goodLo) - y(th.goodHi)); g.globalAlpha = 1;
     const step = rMax > 5000 ? 2000 : 1000;
     g.strokeStyle = col('--line'); g.lineWidth = 1; g.fillStyle = col('--muted'); g.textAlign = 'left'; g.textBaseline = 'middle';
     for (let r = step; r < rMax; r += step) {
@@ -1600,7 +1450,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
       const fillKey = e.smooth ? SMOOTH_KEY[e.smooth] : null;
       g.fillStyle = fillKey ? col('--' + fillKey) : col('--surface');
       g.fillRect(px - sz / 2, py - sz / 2, sz, sz);
-      g.strokeStyle = e.grade ? col('--' + e.grade) : col('--line'); g.lineWidth = 3;
+      g.strokeStyle = col('--bg'); g.lineWidth = 2;
       g.strokeRect(px - sz / 2, py - sz / 2, sz, sz);
     }
   }
@@ -1622,20 +1472,13 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
   }
   function renderSettings() {
     renderLearn();
-    pressed('seg-mode', 'mode', settings.mode);
     pressed('seg-gears', 'n', settings.nGears);
     pressed('seg-cyl', 'c', settings.cylinders);
     pressed('seg-scale', 's', settings.rpmScale);
-    $('in-eco').value = settings.ecoTarget; $('v-eco').textContent = fmt(settings.ecoTarget);
-    $('in-red').value = settings.redline; $('v-red').textContent = fmt(settings.redline);
-    const te = E.thresholds(Object.assign({}, settings, { mode: 'eco' }));
-    const ts = E.thresholds(Object.assign({}, settings, { mode: 'sport' }));
-    $('eco-desc').textContent = `בזמן: ${fmt(te.goodLo)}–${fmt(te.goodHi)}. מוקדם: מתחת ל-${fmt(te.goodLo)}, או אם אחרי ההעברה המנוע ירד מתחת ל-${fmt(te.lug)}.`;
-    $('red-desc').textContent = `בספורטיבי, בזמן: ${fmt(ts.goodLo)}–${fmt(ts.goodHi)}.`;
-    $('in-sound').checked = !!settings.sound; $('in-nums').checked = !!settings.numbers; $('in-record').checked = !!settings.record; $('in-cup').checked = settings.cup !== false; $('in-rpm').checked = !!settings.showRpm; $('in-calib').checked = !!settings.calib;
+    $('in-nums').checked = !!settings.numbers; $('in-record').checked = !!settings.record; $('in-cup').checked = settings.cup !== false; $('in-rpm').checked = !!settings.showRpm; $('in-calib').checked = !!settings.calib;
     const gs = gearModel.solve();
     $('gear-status').textContent = gs.length
-      ? (gearModel.complete ? `כל ${settings.nGears} ההילוכים נלמדו. הצבעים יודעים עכשיו גם באיזה הילוך אתה.` : `נלמדו ${gs.length} מתוך ${settings.nGears}. ממשיך ללמוד בכל נסיעה.`)
+      ? (gearModel.complete ? `כל ${settings.nGears} ההילוכים נלמדו. מעכשיו זיהוי הסל"ד נעזר בהם.` : `נלמדו ${gs.length} מתוך ${settings.nGears}. ממשיך ללמוד בכל נסיעה.`)
       : 'עוד לא נלמדו הילוכים. זה קורה לבד אחרי כמה דקות נסיעה רגילה עם GPS.';
     const tbl = $('gear-table'); tbl.textContent = '';
     for (let i = 1; i <= settings.nGears; i++) {
@@ -1660,13 +1503,9 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
       z.append(p, yes, no);
     }
   }
-  $('seg-mode').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; settings.mode = b.dataset.mode; saveSettings(); renderSettings(); });
   $('seg-gears').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; settings.nGears = +b.dataset.n; gearModel.setGearCount(settings.nGears); saveSettings(); saveGears(); renderSettings(); });
   $('seg-cyl').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; settings.cylinders = +b.dataset.c; saveSettings(); renderSettings(); });
   $('seg-scale').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; settings.rpmScale = +b.dataset.s; saveSettings(); renderSettings(); });
-  $('in-eco').addEventListener('input', (e) => { settings.ecoTarget = +e.target.value; saveSettings(); renderSettings(); });
-  $('in-red').addEventListener('input', (e) => { settings.redline = +e.target.value; saveSettings(); renderSettings(); });
-  $('in-sound').addEventListener('change', (e) => { settings.sound = e.target.checked; saveSettings(); });
   $('learn-reset').addEventListener('click', () => { LS.set('learn', { samples: [], th: null, updated: null }); renderLearn(); });
   $('in-record').addEventListener('change', (e) => { settings.record = e.target.checked; saveSettings(); });
   $('in-cup').addEventListener('change', (e) => { settings.cup = e.target.checked; saveSettings(); });

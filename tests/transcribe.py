@@ -3,7 +3,7 @@
     python3 tests/transcribe.py data/drive-20261105-0815.json [--model large-v3] [--lang he] [--from S --to S]
 
 Writes data/drive-…narration.json next to the recording:
-    {"model": …, "segments": [{"t0": s, "t1": s, "text": "…", "words": [[t, "word"], …]}, …]}
+    {"model": …, "segments": [{"t0": s, "t1": s, "text": "…", "ok": bool, "words": [[t0, "word", t1], …]}, …]}
 and prints the transcript with times (m:ss on the recording clock). Reading it, write the labels next to the
 recording as data/drive-….labels.json = [[t, 'smooth'|'ok'|'harsh'|'none', 'up'|'down'|'launch', 'what was said'], …].
 evaluate.js and dataset.js pick up both files by themselves: the spoken segments are masked from the rpm (the voice
@@ -40,16 +40,22 @@ def main():
                 a0 = max(0.0, float(arg('--from', 0)) - t0s); a1 = float(arg('--to', 1e9)) - t0s
                 if a1 <= 0 or a0 * 16000 >= len(audio): continue
                 audio = audio[int(a0 * 16000):int(min(a1 * 16000, len(audio)))]
-                # voice activity filter on: long stretches of engine noise produce no text
+                # voice activity filter on: long stretches of engine noise produce no text. Short silences split the
+                # speech (the default 2 s merged remarks a minute apart into one segment, with word times smeared
+                # across the gap), and each piece is transcribed on its own (no carry-over of the previous text).
                 pieces, _ = model.transcribe(audio, language=lang, vad_filter=True, word_timestamps=True,
+                                             vad_parameters=dict(min_silence_duration_ms=500, speech_pad_ms=200, max_speech_duration_s=12),
+                                             condition_on_previous_text=False,
                                              initial_prompt='העברתי הילוך. הורדתי לשני. היה חלק. קפץ. טלטלה. יוצא מהרמזור.')
                 for p in pieces:
                     t0 = t0s + a0
                     # Whisper's own confidence; used to drop hallucinations (repeated lines, 'speech' over engine noise)
-                    ok = p.no_speech_prob < 0.6 and p.avg_logprob > -1.0 and p.compression_ratio < 2.4 and (p.end - p.start) < 15
+                    # (a long segment is suspect only when it has few words: 'speech' stretched over engine noise)
+                    dur, nw = p.end - p.start, len(p.words or [])
+                    ok = p.no_speech_prob < 0.6 and p.avg_logprob > -1.0 and p.compression_ratio < 2.4 and (dur < 15 or nw >= 0.3 * dur)
                     out.append({'t0': round(t0 + p.start, 2), 't1': round(t0 + p.end, 2), 'text': p.text.strip(), 'ok': bool(ok),
                                 'logprob': round(p.avg_logprob, 2), 'noSpeech': round(p.no_speech_prob, 2),
-                                'words': [[round(t0 + w.start, 2), w.word.strip()] for w in (p.words or [])]})
+                                'words': [[round(t0 + w.start, 2), w.word.strip(), round(t0 + w.end, 2)] for w in (p.words or [])]})
         # Whisper's other hallucination: the same short line repeated; keep the first, drop the repeats
         norm = lambda t: ''.join(ch for ch in t if ch.isalnum())
         for i in range(1, len(out)):
