@@ -50,6 +50,10 @@ def main():
                     out.append({'t0': round(t0 + p.start, 2), 't1': round(t0 + p.end, 2), 'text': p.text.strip(), 'ok': bool(ok),
                                 'logprob': round(p.avg_logprob, 2), 'noSpeech': round(p.no_speech_prob, 2),
                                 'words': [[round(t0 + w.start, 2), w.word.strip()] for w in (p.words or [])]})
+        # Whisper's other hallucination: the same short line repeated; keep the first, drop the repeats
+        norm = lambda t: ''.join(ch for ch in t if ch.isalnum())
+        for i in range(1, len(out)):
+            if norm(out[i]['text']) and norm(out[i]['text']) == norm(out[i - 1]['text']): out[i]['ok'] = False
         dst = path[:-5] + ('.narration.json' if not arg('--from') and not arg('--to') else f'.narration-{arg("--from", 0)}-{arg("--to", "end")}.json')
         json.dump({'model': model_name, 'lang': lang, 'segments': out}, open(dst, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
         print(f'\n{os.path.basename(path)}  ({rec.get("mode", "drive")}, {len(out)} segments) → {os.path.basename(dst)}')
