@@ -20,6 +20,10 @@ import numpy as np
 def arg(name, default=None):
     return sys.argv[sys.argv.index(name) + 1] if name in sys.argv else default
 
+def NOISE_LINE(text):
+    t = ''.join(ch for ch in text if ch.isalnum() or ch == ' ').strip()
+    return t in ('תודה רבה', 'תודה', 'תודה רבה לכם') or 'כתוביות' in t
+
 def main():
     files = [a for a in sys.argv[1:] if a.endswith('.json') and not a.endswith('.narration.json')]
     if not files:
@@ -56,6 +60,8 @@ def main():
                     # (no length rule: VAD-joined remarks a minute apart make long, sparse segments that are real speech;
                     #  the rpm mask works on the words, so a wrong long segment costs little)
                     ok = p.no_speech_prob < 0.6 and p.avg_logprob > -1.0 and p.compression_ratio < 2.4
+                    # what Whisper writes over engine noise in Hebrew (6.11 drive, no speech at all: 'תודה רבה' ×12, 'כתוביות')
+                    if NOISE_LINE(p.text): ok = False
                     out.append({'t0': round(t0 + p.start, 2), 't1': round(t0 + p.end, 2), 'text': p.text.strip(), 'ok': bool(ok),
                                 'logprob': round(p.avg_logprob, 2), 'noSpeech': round(p.no_speech_prob, 2), 'cr': round(p.compression_ratio, 2),
                                 'words': [[round(t0 + w.start, 2), w.word.strip(), round(t0 + w.end, 2)] for w in (p.words or [])]})
