@@ -417,7 +417,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
         <div id="learn-body" class="small"></div>
         <div class="row"><button class="btn" id="learn-reset">אפס למידה</button></div>
       </div>
-      <p class="small muted" style="text-align:center">גרסה <span class="num">05.11.2026 09:21</span></p>
+      <p class="small muted" style="text-align:center">גרסה <span class="num">06.11.2026 13:14</span></p>
     </div>
   </main>
 </div>
@@ -1179,6 +1179,9 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
       if (after >= d.peak * 0.95) return;
       if (after < d.peak * 0.54) return; // ירידה של חצי = טעות אוקטבה, לא העברה
       if (d.kmhStart != null && kmhNow != null && kmhNow < d.kmhStart * 0.85) return;
+      // רכב עומד (לפי GPS) לא מעביר הילוך: בעמידה הסל"ד מהצליל שגוי, ודיבור או גז בניוטרל נראים כמו ירידה.
+      // בנסיעה הראשונה ובנסיעה של 6.11 היו 3 "העברות" כאלה בכל אחת, וב-6.11 שתיים מהן בדיוק בזמן דיבור.
+      if (d.kmhStart != null && kmhNow != null && d.kmhStart < 3 && kmhNow < 3) return;
       let from = null, to = null;
       if (d.kmhStart != null && kmhNow != null) {
         const gf = this.gears.classify(d.peak, d.kmhStart), gt = this.gears.classify(after, kmhNow);
@@ -1940,7 +1943,7 @@ ol.steps { margin: 0; padding-inline-start: 20px; display: flex; flex-direction:
     };
   }
 
-  const BUILD = '05.11.2026 09:21';
+  const BUILD = '06.11.2026 13:14';
   // ---------- DRIVE RECORDING (for calibration): compressed audio + sensor log in one JSON file ----------
   // Times in the file are seconds since the recorder started. The audio may start a little off that clock;
   // tests/replay.js finds the exact offset by matching the rpm logged live against the rpm from the audio.

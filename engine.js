@@ -678,6 +678,9 @@
       if (after >= d.peak * 0.95) return;
       if (after < d.peak * 0.54) return; // ירידה של חצי = טעות אוקטבה, לא העברה
       if (d.kmhStart != null && kmhNow != null && kmhNow < d.kmhStart * 0.85) return;
+      // רכב עומד (לפי GPS) לא מעביר הילוך: בעמידה הסל"ד מהצליל שגוי, ודיבור או גז בניוטרל נראים כמו ירידה.
+      // בנסיעה הראשונה ובנסיעה של 6.11 היו 3 "העברות" כאלה בכל אחת, וב-6.11 שתיים מהן בדיוק בזמן דיבור.
+      if (d.kmhStart != null && kmhNow != null && d.kmhStart < 3 && kmhNow < 3) return;
       let from = null, to = null;
       if (d.kmhStart != null && kmhNow != null) {
         const gf = this.gears.classify(d.peak, d.kmhStart), gt = this.gears.classify(after, kmhNow);
